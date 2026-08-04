@@ -1,0 +1,35 @@
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      xmlns:html="http://www.w3.org/1999/xhtml"
+      id="zct-preferences">
+  <groupbox>
+    <label><html:h2>OpenAI 兼容 API</html:h2></label>
+    <description>插件仅在你点击翻译或测试连接时调用 API。</description>
+    <html:label for="zct-base-url">Base URL</html:label>
+    <html:input id="zct-base-url" type="url" placeholder="https://api.example.com/v1" />
+    <html:label for="zct-api-key">API Key</html:label>
+    <html:input id="zct-api-key" type="password" autocomplete="off" />
+    <html:label for="zct-model">Model Name</html:label>
+    <html:input id="zct-model" type="text" placeholder="model-name" />
+    <html:label for="zct-target-language">目标语言</html:label>
+    <html:select id="zct-target-language">
+      <html:option value="zh-CN">简体中文</html:option>
+      <html:option value="zh-TW">繁体中文</html:option>
+      <html:option value="en">English</html:option>
+    </html:select>
+    <hbox>
+      <html:button id="zct-save-settings" type="button">保存设置</html:button>
+      <html:button id="zct-test-connection" type="button">测试连接</html:button>
+      <html:button id="zct-clear-key" type="button">清除 API Key</html:button>
+    </hbox>
+    <description>“测试连接”会发送最小的一次 API 请求（最多生成 1 个 token），第三方服务可能计费。</description>
+    <description id="zct-preference-status" aria-live="polite" />
+  </groupbox>
+  <groupbox>
+    <label><html:h2>论文上下文缓存</html:h2></label>
+    <description>标题、摘要、章节结构和建议术语保存在本机，不保存完整翻译历史。</description>
+    <hbox>
+      <html:button id="zct-reanalyze" type="button">重新分析当前论文</html:button>
+      <html:button id="zct-clear-cache" type="button">清除可丢弃缓存</html:button>
+    </hbox>
+  </groupbox>
+</vbox>

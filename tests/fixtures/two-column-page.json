@@ -1,0 +1,9 @@
+{
+  "blocks": [
+    {"id":"right-2","pageIndex":0,"rect":[320,130,550,155],"text":"Right second","fontSize":10,"fontWeight":400},
+    {"id":"left-2","pageIndex":0,"rect":[50,130,280,155],"text":"Left second","fontSize":10,"fontWeight":400},
+    {"id":"heading","pageIndex":0,"rect":[50,20,550,48],"text":"3 Method","fontSize":16,"fontWeight":700},
+    {"id":"right-1","pageIndex":0,"rect":[320,80,550,105],"text":"Right first","fontSize":10,"fontWeight":400},
+    {"id":"left-1","pageIndex":0,"rect":[50,80,280,105],"text":"Left first","fontSize":10,"fontWeight":400}
+  ]
+}

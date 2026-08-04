@@ -1,0 +1,11 @@
+{
+  "blocks": [
+    {"id":"h3","pageIndex":2,"rect":[50,20,550,48],"text":"3 Method","fontSize":16,"fontWeight":700,"documentOrdinal":10,"spansColumns":true},
+    {"id":"p3","pageIndex":2,"rect":[50,60,280,85],"text":"Method overview body text that ends normally","fontSize":10,"fontWeight":400,"documentOrdinal":11},
+    {"id":"h32","pageIndex":2,"rect":[50,100,280,125],"text":"3.2 Context Encoder","fontSize":13,"fontWeight":700,"documentOrdinal":12},
+    {"id":"p32a","pageIndex":2,"rect":[50,135,280,160],"text":"The encoder uses neighboring paragraphs.","fontSize":10,"fontWeight":400,"documentOrdinal":13},
+    {"id":"p32b","pageIndex":2,"rect":[320,60,550,85],"text":"It also preserves terminology.","fontSize":10,"fontWeight":400,"documentOrdinal":14},
+    {"id":"h4","pageIndex":3,"rect":[50,20,550,48],"text":"4 Experiments","fontSize":16,"fontWeight":700,"documentOrdinal":20,"spansColumns":true},
+    {"id":"p4","pageIndex":3,"rect":[50,60,280,85],"text":"We evaluate the model on three datasets.","fontSize":10,"fontWeight":400,"documentOrdinal":21}
+  ]
+}

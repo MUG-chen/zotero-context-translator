@@ -1,0 +1,16 @@
+{
+  "name": "zotero-context-translator",
+  "version": "0.1.6",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-xpi.ps1"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
+  }
+}
