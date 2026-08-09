@@ -236,6 +236,7 @@ export class DocumentContextIndex {
     getIdentity,
     clearDisposable,
     logger,
+    cacheLimitBytes = 500_000_000,
   }) {
     this.readerAdapter = readerAdapter;
     this.cache = cache;
@@ -243,30 +244,72 @@ export class DocumentContextIndex {
     this.getIdentity = getIdentity;
     this.clearDisposable = clearDisposable;
     this.logger = logger;
+    this.cacheLimitBytes = cacheLimitBytes;
+    this.cacheInitialized = false;
     this.entries = new Map();
     this.queue = Promise.resolve();
     this.disposed = false;
+    this.generation = 0;
+    this.keyGenerations = new Map();
   }
 
   begin(selection, { force = false } = {}) {
+    if (this.disposed) return Promise.reject(abortError());
     const key = String(selection.attachmentID);
     const existing = this.entries.get(key);
     if (!force && existing) return existing.promise;
-    const entry = { status: "pending", record: null, promise: null };
-    const analyze = () => this.#analyze(selection);
+    const token = {
+      generation: this.generation,
+      key,
+      keyGeneration: this.keyGenerations.get(key) ?? 0,
+    };
+    const controller = new AbortController();
+    const work = {
+      attachmentID: selection.attachmentID,
+      reader: selection.reader,
+    };
+    const entry = {
+      status: "pending",
+      record: null,
+      promise: null,
+      controller,
+      token,
+      work,
+    };
+    const analyze = async () => {
+      this.#assertActive(token, controller.signal);
+      if (!this.cacheInitialized) {
+        await this.#enforceCacheLimit();
+        this.#assertActive(token, controller.signal);
+      }
+      return this.#analyze(work, token, controller.signal, { skipCache: force });
+    };
     const promise = (this.queue = this.queue.catch(() => {}).then(analyze));
-    entry.promise = promise.then(
-      (record) => {
-        entry.status = "ready";
-        entry.record = record;
-        return record;
-      },
-      (error) => {
-        entry.status = "failed";
-        entry.error = error;
-        throw error;
-      },
-    );
+    entry.promise = promise
+      .then(
+        ({ record, retained }) => {
+          this.#assertActive(token, controller.signal);
+          if (!retained) {
+            if (this.entries.get(key) === entry) this.entries.delete(key);
+            return record;
+          }
+          entry.status = "ready";
+          entry.record = record;
+          return record;
+        },
+        (error) => {
+          if (this.entries.get(key) === entry) {
+            entry.status = "failed";
+            entry.error = error;
+          }
+          throw error;
+        },
+      )
+      .finally(() => {
+        work.reader = null;
+        entry.work = null;
+        entry.controller = null;
+      });
     this.entries.set(key, entry);
     return entry.promise;
   }
@@ -279,15 +322,25 @@ export class DocumentContextIndex {
       entry = this.entries.get(key);
     }
     if (entry.status === "pending") {
-      await waitForIndex(entry.promise, { maxWaitMs, signal });
+      const record = await waitForIndex(entry.promise, { maxWaitMs, signal });
+      if (entry.status !== "ready") {
+        return contextFromRecord(record, selection);
+      }
     }
     if (entry.status === "ready") return contextFromRecord(entry.record, selection);
     throw entry.error ?? new Error("Context index is unavailable");
   }
 
   async update(attachmentID, result) {
-    const entry = this.entries.get(String(attachmentID));
+    const key = String(attachmentID);
+    const entry = this.entries.get(key);
     if (entry?.status !== "ready") return;
+    const token = {
+      generation: this.generation,
+      key,
+      keyGeneration: this.keyGenerations.get(key) ?? 0,
+    };
+    this.#assertActive(token);
     if (result.paperProfile) entry.record.paperProfile = result.paperProfile;
     if (Array.isArray(result.terms) && result.terms.length) {
       entry.record.suggestedTerms = mergeTerms(
@@ -296,49 +349,87 @@ export class DocumentContextIndex {
       );
     }
     entry.record.lastUsed = Date.now();
-    await this.cache?.saveDocument(entry.record);
+    const save = (this.queue = this.queue
+      .catch(() => {})
+      .then(() => this.#saveRecord(entry.record, token)));
+    await save;
   }
 
   async reanalyze(selection) {
     const key = String(selection.attachmentID);
     const existing = this.entries.get(key);
+    const keyGeneration = (this.keyGenerations.get(key) ?? 0) + 1;
+    this.keyGenerations.set(key, keyGeneration);
+    this.#invalidateEntry(existing);
     if (existing?.record?.identity) {
-      await this.cache?.invalidate(existing.record.identity);
+      const cache = this.cache;
+      const identity = existing.record.identity;
+      const invalidate = (this.queue = this.queue
+        .catch(() => {})
+        .then(() => cache?.invalidate(identity)));
+      await invalidate;
+    }
+    if (
+      this.disposed ||
+      this.keyGenerations.get(key) !== keyGeneration
+    ) {
+      throw abortError();
     }
     this.entries.delete(key);
     return this.begin(selection, { force: true });
   }
 
   async clear() {
+    this.generation += 1;
+    for (const entry of this.entries.values()) this.#invalidateEntry(entry);
     this.entries.clear();
-    await this.clearDisposable?.();
+    const clearDisposable = this.clearDisposable;
+    const purge = (this.queue = this.queue
+      .catch(() => {})
+      .then(() => clearDisposable?.()));
+    await purge;
   }
 
   dispose() {
     this.disposed = true;
+    this.generation += 1;
+    for (const entry of this.entries.values()) this.#invalidateEntry(entry);
     this.entries.clear();
+    this.queue = Promise.resolve();
+    this.keyGenerations.clear();
+    this.readerAdapter = null;
+    this.readMetadata = null;
+    this.getIdentity = null;
+    this.clearDisposable = null;
   }
 
-  async #analyze(selection) {
-    if (this.disposed) throw new Error("Context index is disposed");
+  async #analyze(work, token, signal, { skipCache = false } = {}) {
+    this.#assertActive(token, signal);
     const identity = await stage("identity", () =>
-      this.getIdentity(selection.attachmentID),
+      this.getIdentity(work.attachmentID),
     );
-    const cached = await stage("cache-read", () =>
-      this.cache?.loadDocument(identity),
-    );
-    if (cached) return cached;
+    this.#assertActive(token, signal);
+    if (!skipCache) {
+      const cached = await stage("cache-read", () =>
+        this.cache?.loadDocument(identity),
+      );
+      this.#assertActive(token, signal);
+      if (cached) return { record: cached, retained: true };
+    }
+    const readerAdapter = this.readerAdapter;
     const blocks = assignDocumentOrdinals(
       await stage("pdf-extraction", () =>
-        this.readerAdapter.extractDocumentBlocks(selection.reader),
+        readerAdapter.extractDocumentBlocks(work.reader, { signal }),
       ),
     );
+    work.reader = null;
+    this.#assertActive(token, signal);
     const headings = detectHeadings(blocks, []);
     const record = {
       identity,
       metadata: inferPaperMetadata(
         blocks,
-        this.readMetadata(selection.attachmentID),
+        this.readMetadata(work.attachmentID),
       ),
       blocks,
       sections: buildSectionIndex(blocks, headings),
@@ -348,8 +439,67 @@ export class DocumentContextIndex {
       confirmedTerms: [],
       lastUsed: Date.now(),
     };
-    await stage("cache-write", () => this.cache?.saveDocument(record));
-    return record;
+    this.#assertActive(token, signal);
+    const { retained } = await this.#saveRecord(record, token, signal);
+    return { record, retained };
+  }
+
+  async #saveRecord(record, token, signal) {
+    const cache = this.cache;
+    this.#assertActive(token, signal);
+    await stage("cache-write", () => cache?.saveDocument(record));
+    const maintenance = await this.#enforceCacheLimit(cache);
+    const removedPaths = new Set(maintenance?.removedPaths ?? []);
+    const retained =
+      typeof cache?.documentPath !== "function" ||
+      !removedPaths.has(cache.documentPath(record.identity));
+    if (!this.#isActive(token, signal)) {
+      try {
+        await cache?.invalidate?.(record.identity);
+      } catch (error) {
+        this.logger?.error?.(error);
+      }
+      throw abortError();
+    }
+    return { maintenance, retained };
+  }
+
+  async #enforceCacheLimit(cache = this.cache) {
+    const result = await stage("cache-limit", () =>
+      cache?.enforceLimit?.(this.cacheLimitBytes),
+    );
+    this.cacheInitialized = true;
+    const removedPaths = new Set(result?.removedPaths ?? []);
+    if (removedPaths.size && typeof cache?.documentPath === "function") {
+      for (const [key, entry] of this.entries) {
+        if (
+          entry.status === "ready" &&
+          entry.record?.identity &&
+          removedPaths.has(cache.documentPath(entry.record.identity))
+        ) {
+          this.entries.delete(key);
+        }
+      }
+    }
+    return result;
+  }
+
+  #invalidateEntry(entry) {
+    entry?.controller?.abort();
+    if (entry?.work) entry.work.reader = null;
+  }
+
+  #isActive(token, signal) {
+    return (
+      !this.disposed &&
+      !signal?.aborted &&
+      token.generation === this.generation &&
+      token.keyGeneration === (this.keyGenerations.get(token.key) ?? 0)
+    );
+  }
+
+  #assertActive(token, signal) {
+    if (!this.#isActive(token, signal)) throw abortError();
   }
 }
 

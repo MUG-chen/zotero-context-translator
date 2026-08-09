@@ -132,6 +132,7 @@ test("preference fragment exposes only explicit connection-test actions", async 
   assert.match(xhtml, /Base URL/);
   assert.match(xhtml, /Model Name/);
   assert.match(xhtml, /最小的一次 API 请求/);
+  assert.match(xhtml, /提取的页面文本块.*重建段落.*保存在本机/);
   assert.doesNotMatch(xhtml, /sidebar/i);
 });
 

@@ -50,26 +50,53 @@ async function startup({ rootURI }, reason) {
     try {
       await pluginInstance?.shutdown?.({ reason });
     } catch (shutdownError) {
-      Zotero.logError?.(shutdownError);
+      reportBootstrapError(shutdownError);
     }
-    delete Zotero.ZoteroContextTranslator;
-    pluginInstance = null;
-    moduleScope = null;
-    chromeHandle?.destruct();
-    chromeHandle = null;
+    const cleanupError = cleanupBootstrapState();
+    if (cleanupError) reportBootstrapError(cleanupError);
     throw error;
   }
 }
 
 async function shutdown(_context, reason) {
-  if (pluginInstance) {
-    await pluginInstance.shutdown({ reason });
-    pluginInstance = null;
+  let shutdownError = null;
+  try {
+    await pluginInstance?.shutdown?.({ reason });
+  } catch (error) {
+    shutdownError = error;
   }
-  delete Zotero.ZoteroContextTranslator;
+
+  const cleanupError = cleanupBootstrapState();
+  if (shutdownError) {
+    if (cleanupError) reportBootstrapError(cleanupError);
+    throw shutdownError;
+  }
+  if (cleanupError) throw cleanupError;
+}
+
+function cleanupBootstrapState() {
+  const handle = chromeHandle;
+  let cleanupError = null;
+  pluginInstance = null;
   moduleScope = null;
-  chromeHandle?.destruct();
   chromeHandle = null;
+  try {
+    delete Zotero.ZoteroContextTranslator;
+  } catch (error) {
+    cleanupError = error;
+  }
+  try {
+    handle?.destruct();
+  } catch (error) {
+    cleanupError ??= error;
+  }
+  return cleanupError;
+}
+
+function reportBootstrapError(error) {
+  try {
+    Zotero.logError?.(error);
+  } catch {}
 }
 
 function install() {}

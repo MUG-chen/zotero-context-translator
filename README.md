@@ -1,6 +1,6 @@
 # Zotero Context Translator
 
-面向 Zotero 9 PDF Reader 的上下文感知学术翻译插件。当前版本：`0.1.6`，支持 Zotero `9.0.*`。
+面向 Zotero 9 PDF Reader 的上下文感知学术翻译插件。当前版本：`0.1.9`，支持 Zotero `9.0.*`。
 
 ## 功能特点
 
@@ -17,7 +17,7 @@
 ## 安装
 
 1. 克隆源代码并安装项目依赖。
-2. 在仓库根目录运行 `pnpm run build`，生成 `outputs/zotero-context-translator-0.1.6.xpi`。
+2. 在仓库根目录运行 `pnpm run build`，生成 `outputs/zotero-context-translator-0.1.9.xpi`。
 3. 在 Zotero 中打开“工具 → 插件”，点击齿轮并选择“Install Add-on From File…”，再选择生成的 XPI 文件。
 4. 安装后打开“编辑 → 设置 → 上下文翻译”，完成 API 配置。
 
@@ -59,7 +59,7 @@ Model Name: model-name
 pnpm run build
 ```
 
-构建产物为 `outputs/zotero-context-translator-0.1.6.xpi`。
+构建产物为 `outputs/zotero-context-translator-0.1.9.xpi`。
 
 ## 测试与验收
 
