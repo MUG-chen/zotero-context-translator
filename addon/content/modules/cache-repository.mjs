@@ -43,12 +43,18 @@ export class CacheRepository {
       .filter((entry) => entry.kind !== "confirmedTerms")
       .sort((a, b) => a.lastUsed - b.lastUsed);
     let total = entries.reduce((sum, entry) => sum + entry.size, 0);
+    const removedPaths = [];
     for (const entry of entries) {
       if (total <= limitBytes) break;
       await this.files.remove(entry.path);
+      removedPaths.push(entry.path);
       total -= entry.size;
     }
-    return total;
+    return { totalBytes: total, removedPaths };
+  }
+
+  documentPath(identity) {
+    return this.#documentPath(identity);
   }
 
   #documentPath(identity) {

@@ -1,7 +1,14 @@
-const WINDOW_WIDTH = 440;
-const WINDOW_HEIGHT = 320;
+const WINDOW_WIDTH = 380;
+const WINDOW_HEIGHT = 300;
 const VIEWPORT_MARGIN = 12;
 const DRAG_THRESHOLD = 4;
+const RESIZE_HANDLE_SIZE = 18;
+const TITLEBAR_HEIGHT = 44;
+const DETACHED_SIZING = Object.freeze({
+  PENDING_RESULT: "pending-result",
+  AUTO_FIT: "auto-fit",
+  USER_SIZED: "user-sized",
+});
 
 export const FLOATING_WINDOW_CSS = String.raw`
 .zct-selection-overlay {
@@ -34,26 +41,39 @@ export const FLOATING_WINDOW_CSS = String.raw`
   --zct-danger-border: #f4c7c2;
   background: var(--zct-bg);
   border: 1px solid var(--zct-border);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: 0 18px 48px rgb(26 42 68 / 20%), 0 3px 10px rgb(26 42 68 / 10%);
   box-sizing: border-box;
   color: var(--zct-text);
   display: flex;
   flex-direction: column;
-  font: 13px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
-  max-height: min(620px, calc(100vh - 24px));
+  font: 12px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  max-height: calc(100vh - 24px);
+  max-width: calc(100vw - 24px);
+  min-width: min(320px, calc(100vw - 24px));
+  min-height: min(240px, calc(100vh - 24px));
   overflow: hidden;
   position: fixed;
-  width: min(440px, calc(100vw - 32px));
+  resize: both;
+  width: min(380px, calc(100vw - 24px));
   z-index: 2147483601;
 }
 
 .zct-floating-window--embedded {
   box-shadow: 0 10px 30px rgb(26 42 68 / 14%);
   left: auto;
-  max-width: min(440px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 24px));
+  max-width: min(380px, calc(100vw - 24px));
+  min-width: 0;
+  min-height: 0;
   position: relative;
+  resize: none;
   top: auto;
+  width: 100%;
+}
+
+.zct-floating-window--auto-fit {
+  max-height: min(520px, calc(100vh - 24px));
 }
 
 .zct-titlebar {
@@ -63,8 +83,8 @@ export const FLOATING_WINDOW_CSS = String.raw`
   display: flex;
   flex: 0 0 auto;
   justify-content: space-between;
-  min-height: 48px;
-  padding: 8px 10px 8px 14px;
+  min-height: 44px;
+  padding: 6px 8px 6px 12px;
   user-select: none;
 }
 
@@ -77,8 +97,8 @@ export const FLOATING_WINDOW_CSS = String.raw`
   display: flex;
 }
 
-.zct-brand { gap: 9px; min-width: 0; }
-.zct-title-meta { gap: 8px; }
+.zct-brand { gap: 8px; min-width: 0; }
+.zct-title-meta { gap: 6px; }
 
 .zct-brand-mark {
   align-items: center;
@@ -89,13 +109,13 @@ export const FLOATING_WINDOW_CSS = String.raw`
   display: inline-flex;
   font-size: 12px;
   font-weight: 750;
-  height: 27px;
+  height: 25px;
   justify-content: center;
   letter-spacing: -0.02em;
-  width: 27px;
+  width: 25px;
 }
 
-.zct-title { font-size: 14px; font-weight: 680; letter-spacing: 0.01em; }
+.zct-title { font-size: 13px; font-weight: 680; letter-spacing: 0.01em; }
 
 .zct-state-badge {
   background: var(--zct-bg-subtle);
@@ -138,8 +158,8 @@ export const FLOATING_WINDOW_CSS = String.raw`
   border: 1px solid var(--zct-border);
   border-radius: 10px;
   flex: 0 0 auto;
-  margin: 12px 14px 9px;
-  padding: 9px 11px 10px;
+  margin: 10px 12px 7px;
+  padding: 7px 9px 8px;
 }
 
 .zct-source-heading { justify-content: space-between; margin-bottom: 4px; }
@@ -163,7 +183,7 @@ export const FLOATING_WINDOW_CSS = String.raw`
   color: var(--zct-text-secondary);
   display: -webkit-box;
   font-family: ui-serif, Georgia, "Times New Roman", serif;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.45;
   overflow: hidden;
   overflow-wrap: anywhere;
@@ -180,7 +200,7 @@ export const FLOATING_WINDOW_CSS = String.raw`
 .zct-actions {
   display: flex;
   flex: 0 0 auto;
-  margin: 0 14px;
+  margin: 0 12px;
 }
 
 .zct-translate {
@@ -202,8 +222,8 @@ export const FLOATING_WINDOW_CSS = String.raw`
   color: var(--zct-text-secondary);
   flex: 0 0 auto;
   gap: 8px;
-  min-height: 35px;
-  padding: 4px 16px 2px;
+  min-height: 32px;
+  padding: 3px 14px 1px;
 }
 
 .zct-status-indicator {
@@ -226,26 +246,26 @@ export const FLOATING_WINDOW_CSS = String.raw`
 
 .zct-content-scroll {
   flex: 1 1 auto;
-  min-height: 64px;
+  min-height: 56px;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 5px 14px 14px;
+  padding: 4px 12px 12px;
   scrollbar-color: var(--zct-border-strong) transparent;
 }
 
 .zct-empty {
   color: var(--zct-text-tertiary);
-  padding: 10px 2px 12px;
+  padding: 8px 2px 10px;
   text-align: center;
 }
 
-.zct-result-section { padding: 3px 1px 10px; }
+.zct-result-section { padding: 2px 1px 8px; }
 .zct-section-heading { justify-content: space-between; margin-bottom: 5px; }
 .zct-section-label { color: var(--zct-text-secondary); font-size: 12px; font-weight: 680; letter-spacing: 0.04em; }
 
 .zct-translation {
-  font-size: 15px;
-  line-height: 1.72;
+  font-size: 14px;
+  line-height: 1.65;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -255,7 +275,7 @@ export const FLOATING_WINDOW_CSS = String.raw`
   border: 1px solid var(--zct-border);
   border-radius: 10px;
   margin-top: 5px;
-  padding: 10px 11px 11px;
+  padding: 8px 9px 9px;
 }
 
 .zct-explanation { color: var(--zct-text-secondary); line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -284,8 +304,8 @@ export const FLOATING_WINDOW_CSS = String.raw`
   border-top: 1px solid var(--zct-border);
   color: var(--zct-text-tertiary);
   flex: 0 0 auto;
-  font-size: 11px;
-  padding: 8px 14px 9px;
+  font-size: 10.5px;
+  padding: 7px 12px 8px;
 }
 
 .zct-close:focus-visible,
@@ -342,6 +362,10 @@ export class FloatingView {
   #current = {};
   #sourceExpanded = false;
   #copyTimer = null;
+  #resizeObserver = null;
+  #detachedSizingMode = null;
+  #detachedHeight = null;
+  #autoFitPeakHeight = null;
 
   mount({ doc, append, anchorRects = [], handlers = {} }) {
     if (!doc?.createElement || !doc.body) {
@@ -362,6 +386,7 @@ export class FloatingView {
       positionDialog(this.#root, anchorRects, doc.defaultView);
     }
     this.#bindEvents();
+    this.#observeResize();
     this.render({ status: "ready", selection: null });
     return this.#root;
   }
@@ -404,13 +429,15 @@ export class FloatingView {
 
     this.#nodes.empty.hidden =
       Boolean(translation || explanation || isError) || current.status === "loading";
-    this.#repositionWithinViewport();
+    this.#updateDetachedSizing(current);
+    this.#repositionAfterContentChange();
   }
 
   destroy() {
     for (const [target, type, listener] of this.#listeners.splice(0)) {
       target.removeEventListener(type, listener);
     }
+    this.#resizeObserver?.disconnect();
     if (this.#copyTimer !== null) clearTimeout(this.#copyTimer);
     this.#root?.remove();
     this.#overlay?.remove();
@@ -423,6 +450,10 @@ export class FloatingView {
     this.#current = {};
     this.#sourceExpanded = false;
     this.#copyTimer = null;
+    this.#resizeObserver = null;
+    this.#detachedSizingMode = null;
+    this.#detachedHeight = null;
+    this.#autoFitPeakHeight = null;
     this.#doc = null;
   }
 
@@ -441,13 +472,13 @@ export class FloatingView {
       retryButton,
     } = this.#nodes;
     this.#listen(this.#root, "pointerdown", (event) => {
-      event.preventDefault();
+      const usesResizeHandle = this.#markUserSized(event);
+      if (!usesResizeHandle) event.preventDefault();
       event.stopPropagation();
     });
     this.#listen(closeButton, "click", () => this.#handlers.close?.());
     this.#listen(translateButton, "click", () => {
       this.#handlers.translate?.("sentence");
-      this.#detachFromHost();
     });
     this.#listen(sourceToggle, "click", () => {
       this.#sourceExpanded = !this.#sourceExpanded;
@@ -471,8 +502,14 @@ export class FloatingView {
         pointerID: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
-        left: rect.left,
-        top: rect.top,
+        grabX: event.clientX - rect.left,
+        grabY: event.clientY - rect.top,
+        geometry: {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        },
         pending: true,
       };
       titlebar.setPointerCapture?.(event.pointerId);
@@ -483,17 +520,12 @@ export class FloatingView {
       const deltaY = event.clientY - this.#drag.startY;
       if (this.#drag.pending) {
         if (Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD) return;
-        const rect = this.#root.getBoundingClientRect();
-        this.#detachFromHost();
-        this.#drag.left = rect.left;
-        this.#drag.top = rect.top;
+        this.#detachFromHost(this.#drag.geometry);
         this.#drag.pending = false;
       }
-      setClampedPosition(
-        this.#root,
-        this.#drag.left + deltaX,
-        this.#drag.top + deltaY,
-        this.#doc.defaultView,
+      this.#setDraggedPosition(
+        event.clientX - this.#drag.grabX,
+        event.clientY - this.#drag.grabY,
       );
     });
     this.#listen(this.#doc.defaultView, "pointerup", (event) => {
@@ -514,7 +546,16 @@ export class FloatingView {
     this.#nodes.sourcePreview.className = this.#sourceExpanded
       ? "zct-source-preview zct-source-preview--expanded"
       : "zct-source-preview";
-    this.#repositionWithinViewport();
+    this.#repositionAfterContentChange();
+  }
+
+  #observeResize() {
+    const ResizeObserver = this.#doc?.defaultView?.ResizeObserver;
+    if (typeof ResizeObserver !== "function") return;
+    this.#resizeObserver = new ResizeObserver(() =>
+      this.#handleObservedResize(),
+    );
+    this.#resizeObserver.observe(this.#root);
   }
 
   async #copyTranslation() {
@@ -541,6 +582,16 @@ export class FloatingView {
   #repositionWithinViewport() {
     if (this.#embedded || !this.#root || !this.#doc) return;
     const rect = this.#root.getBoundingClientRect();
+    if (this.#detachedSizingMode !== null) {
+      this.#constrainAutoFitToViewport();
+      setReachablePosition(
+        this.#root,
+        rect.left,
+        rect.top,
+        this.#doc.defaultView,
+      );
+      return;
+    }
     setClampedPosition(
       this.#root,
       rect.left,
@@ -549,16 +600,120 @@ export class FloatingView {
     );
   }
 
-  #detachFromHost() {
-    if (!this.#embedded || !this.#root) return;
+  #setDraggedPosition(left, top) {
+    const position = this.#detachedSizingMode === null
+      ? setClampedPosition
+      : setReachablePosition;
+    position(this.#root, left, top, this.#doc.defaultView);
+  }
+
+  #repositionAfterContentChange() {
+    if (this.#detachedSizingMode === null) this.#repositionWithinViewport();
+  }
+
+  #handleObservedResize() {
+    if (this.#detachedSizingMode !== DETACHED_SIZING.AUTO_FIT) {
+      this.#repositionAfterContentChange();
+      return;
+    }
+    const limit = this.#autoFitHeightLimit();
+    const observedHeight = Math.min(
+      this.#root.getBoundingClientRect().height,
+      limit,
+    );
+    const peakHeight = Math.min(
+      Math.max(this.#autoFitPeakHeight ?? 0, observedHeight),
+      limit,
+    );
+    if (peakHeight === this.#autoFitPeakHeight) return;
+    this.#autoFitPeakHeight = peakHeight;
+    this.#root.style.minHeight = `${peakHeight}px`;
+  }
+
+  #autoFitHeightLimit() {
+    return Math.max(
+      0,
+      Math.min(520, (this.#doc?.defaultView?.innerHeight ?? 800) - 24),
+    );
+  }
+
+  #constrainAutoFitToViewport() {
+    if (this.#detachedSizingMode !== DETACHED_SIZING.AUTO_FIT) return;
+    const peakHeight = Math.min(
+      this.#autoFitPeakHeight ?? this.#detachedHeight ?? 0,
+      this.#autoFitHeightLimit(),
+    );
+    if (peakHeight === this.#autoFitPeakHeight) return;
+    this.#autoFitPeakHeight = peakHeight;
+    this.#root.style.minHeight = `${peakHeight}px`;
+  }
+
+  #updateDetachedSizing(current) {
+    if (
+      this.#detachedSizingMode !== DETACHED_SIZING.PENDING_RESULT ||
+      !this.#root
+    ) return;
+    const hasVisibleResult = Boolean(
+      String(current.translation ?? "") ||
+      String(current.explanation ?? "") ||
+      current.status === "error",
+    );
+    if (!hasVisibleResult) return;
+    const preservedHeight = `${this.#detachedHeight}px`;
+    if (this.#root.style.height !== preservedHeight) {
+      this.#detachedSizingMode = DETACHED_SIZING.USER_SIZED;
+      return;
+    }
+    this.#root.style.height = "auto";
+    this.#root.style.minHeight = preservedHeight;
+    this.#root.className += " zct-floating-window--auto-fit";
+    this.#detachedSizingMode = DETACHED_SIZING.AUTO_FIT;
+    this.#autoFitPeakHeight = this.#detachedHeight;
+  }
+
+  #markUserSized(event) {
+    if (this.#detachedSizingMode === null) return false;
     const rect = this.#root.getBoundingClientRect();
+    const usesResizeHandle =
+      event.clientX >= rect.right - RESIZE_HANDLE_SIZE &&
+      event.clientY >= rect.bottom - RESIZE_HANDLE_SIZE;
+    if (!usesResizeHandle) return false;
+    if (this.#detachedSizingMode === DETACHED_SIZING.USER_SIZED) return true;
+    this.#detachedSizingMode = DETACHED_SIZING.USER_SIZED;
+    this.#autoFitPeakHeight = null;
+    this.#root.style.minHeight = "";
+    this.#root.className = this.#root.className
+      .split(/\s+/)
+      .filter((name) => name && name !== "zct-floating-window--auto-fit")
+      .join(" ");
+    return true;
+  }
+
+  #detachFromHost(geometry = null) {
+    if (!this.#embedded || !this.#root) return;
+    const rect = geometry ?? this.#root.getBoundingClientRect();
+    const view = this.#doc.defaultView;
+    const maxWidth = Math.max(0, (view?.innerWidth ?? 1200) - 2 * VIEWPORT_MARGIN);
+    const maxHeight = Math.max(0, (view?.innerHeight ?? 800) - 2 * VIEWPORT_MARGIN);
     this.#root.className = this.#root.className
       .split(/\s+/)
       .filter((name) => name && name !== "zct-floating-window--embedded")
       .join(" ");
     this.#doc.body.append(this.#root);
-    setClampedPosition(this.#root, rect.left, rect.top, this.#doc.defaultView);
+    this.#root.style.width = `${clamp(
+      rect.width,
+      Math.min(320, maxWidth),
+      maxWidth,
+    )}px`;
+    this.#detachedHeight = clamp(
+      rect.height,
+      Math.min(240, maxHeight),
+      maxHeight,
+    );
+    this.#root.style.height = `${this.#detachedHeight}px`;
+    setClampedPosition(this.#root, rect.left, rect.top, view);
     this.#embedded = false;
+    this.#detachedSizingMode = DETACHED_SIZING.PENDING_RESULT;
   }
 }
 
@@ -739,6 +894,14 @@ function setClampedPosition(root, left, top, view) {
   const size = dialogSize(root);
   root.style.left = `${clamp(left, VIEWPORT_MARGIN, width - size.width - VIEWPORT_MARGIN)}px`;
   root.style.top = `${clamp(top, VIEWPORT_MARGIN, height - size.height - VIEWPORT_MARGIN)}px`;
+}
+
+function setReachablePosition(root, left, top, view) {
+  const width = view?.innerWidth ?? 1200;
+  const height = view?.innerHeight ?? 800;
+  const size = dialogSize(root);
+  root.style.left = `${clamp(left, VIEWPORT_MARGIN, width - size.width - VIEWPORT_MARGIN)}px`;
+  root.style.top = `${clamp(top, VIEWPORT_MARGIN, height - TITLEBAR_HEIGHT - VIEWPORT_MARGIN)}px`;
 }
 
 function dialogSize(root) {

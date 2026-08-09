@@ -22,9 +22,10 @@ export async function startFakeOpenAIServer(handler) {
     baseURL: `http://127.0.0.1:${address.port}/v1`,
     requests,
     async close() {
-      await new Promise((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
+      await new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+        server.closeAllConnections?.();
+      });
     },
   };
 }

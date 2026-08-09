@@ -15,6 +15,9 @@ export function normalizeChatCompletionsURL(baseURL) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new TypeError("Base URL must use HTTP or HTTPS");
   }
+  if (url.protocol === "http:" && !isExplicitLoopback(url.hostname)) {
+    throw new TypeError("Base URL must use HTTPS for non-loopback hosts");
+  }
   if (url.username || url.password) {
     throw new TypeError("Base URL must not contain credentials");
   }
@@ -30,4 +33,15 @@ export function normalizeChatCompletionsURL(baseURL) {
     ? path
     : `${path}${CHAT_COMPLETIONS_SUFFIX}`;
   return url.toString().replace(/\/$/, "");
+}
+
+function isExplicitLoopback(hostname) {
+  const normalized = String(hostname).toLowerCase().replace(/^\[|\]$/g, "");
+  if (normalized === "localhost" || normalized === "::1") return true;
+  const octets = normalized.split(".");
+  return (
+    octets.length === 4 &&
+    octets[0] === "127" &&
+    octets.every((octet) => /^\d+$/.test(octet) && Number(octet) <= 255)
+  );
 }

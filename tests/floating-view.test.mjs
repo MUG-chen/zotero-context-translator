@@ -6,6 +6,37 @@ import {
 } from "../addon/content/modules/floating-view.mjs";
 import { FakeDocument, event } from "./helpers/fake-dom.mjs";
 
+function mountDetachedCard({
+  doc = new FakeDocument(),
+  height = 260,
+  state = null,
+} = {}) {
+  const host = doc.createElement("div");
+  doc.body.append(host);
+  const view = new FloatingView();
+  const root = view.mount({
+    doc,
+    append: (node) => host.append(node),
+    handlers: {},
+  });
+  const titlebar = root.querySelector(".zct-titlebar");
+  root.mockRect = { left: 80, top: 90, width: 380, height };
+  if (state) view.render(state);
+  titlebar.dispatchEvent(event("pointerdown", {
+    pointerId: 101,
+    clientX: 100,
+    clientY: 110,
+    target: titlebar,
+  }));
+  doc.defaultView.dispatchEvent(event("pointermove", {
+    pointerId: 101,
+    clientX: 110,
+    clientY: 122,
+  }));
+  doc.defaultView.dispatchEvent(event("pointerup", { pointerId: 101 }));
+  return { doc, root, titlebar, view };
+}
+
 test("mounts one floating dialog and selection overlay without any sidebar", () => {
   const doc = new FakeDocument();
   const view = new FloatingView();
@@ -78,22 +109,25 @@ test("pointer interaction preserves the PDF selection and buttons invoke handler
   assert.deepEqual(calls, ["sentence"]);
 });
 
-test("starts inside Zotero's native selection popup and detaches after translation", () => {
+test("stays inside Zotero's native selection popup after translation starts", () => {
   const doc = new FakeDocument();
   const host = doc.createElement("div");
   doc.body.append(host);
+  const calls = [];
   const view = new FloatingView();
   const root = view.mount({
     doc,
     append: (node) => host.append(node),
-    handlers: {},
+    handlers: { translate: (mode) => calls.push(mode) },
   });
 
   assert.equal(root.parentNode, host);
   assert.match(root.className, /zct-floating-window--embedded/);
   root.querySelector(".zct-translate").dispatchEvent(event("click"));
-  assert.equal(root.parentNode, doc.body);
-  assert.doesNotMatch(root.className, /zct-floating-window--embedded/);
+
+  assert.deepEqual(calls, ["sentence"]);
+  assert.equal(root.parentNode, host);
+  assert.match(root.className, /zct-floating-window--embedded/);
   assert.equal(doc.querySelectorAll('[role="dialog"]').length, 1);
 });
 
@@ -144,7 +178,7 @@ test("close button does not let the draggable titlebar capture its pointer", () 
   assert.deepEqual(calls, ["close"]);
 });
 
-test("the translate action fires before the same dialog detaches", () => {
+test("the translate action fires once while the same dialog remains embedded", () => {
   const doc = new FakeDocument();
   const host = doc.createElement("div");
   doc.body.append(host);
@@ -167,7 +201,8 @@ test("the translate action fires before the same dialog detaches", () => {
   translate.dispatchEvent(event("click"));
 
   assert.deepEqual(order, ["translate-embedded"]);
-  assert.equal(root.parentNode, doc.body);
+  assert.equal(root.parentNode, host);
+  assert.match(root.className, /zct-floating-window--embedded/);
 });
 
 test("closes on the first click in 20 fresh embedded dialogs", () => {
@@ -216,6 +251,255 @@ test("a sub-threshold title movement does not detach the embedded dialog", () =>
   );
 
   assert.equal(root.parentNode, host);
+});
+
+test("detaches only after an intentional titlebar drag", () => {
+  const doc = new FakeDocument();
+  const host = doc.createElement("div");
+  doc.body.append(host);
+  const view = new FloatingView();
+  const root = view.mount({
+    doc,
+    append: (node) => host.append(node),
+    handlers: {},
+  });
+  const titlebar = root.querySelector(".zct-titlebar");
+  root.mockRect = { left: 80, top: 90, width: 380, height: 420 };
+
+  titlebar.dispatchEvent(event("pointerdown", {
+    pointerId: 7,
+    clientX: 100,
+    clientY: 100,
+    target: titlebar,
+  }));
+  doc.defaultView.dispatchEvent(event("pointermove", {
+    pointerId: 7,
+    clientX: 110,
+    clientY: 112,
+  }));
+
+  assert.equal(root.parentNode, doc.body);
+  assert.doesNotMatch(root.className, /zct-floating-window--embedded/);
+  assert.equal(root.style.width, "380px");
+  assert.equal(root.style.height, "420px");
+  assert.equal(doc.querySelectorAll('[role="dialog"]').length, 1);
+});
+
+test("keeps the pointerdown grab point when Zotero repositions the host before drag", () => {
+  const doc = new FakeDocument();
+  const host = doc.createElement("div");
+  doc.body.append(host);
+  const view = new FloatingView();
+  const root = view.mount({
+    doc,
+    append: (node) => host.append(node),
+    handlers: {},
+  });
+  const titlebar = root.querySelector(".zct-titlebar");
+  root.mockRect = { width: 380, height: 420 };
+  root.style.left = "80px";
+  root.style.top = "90px";
+
+  titlebar.dispatchEvent(event("pointerdown", {
+    pointerId: 8,
+    clientX: 100,
+    clientY: 110,
+    target: titlebar,
+  }));
+
+  // Zotero's transformed ViewPopup may recalculate after card content changes.
+  root.style.left = "900px";
+  root.style.top = "300px";
+  doc.defaultView.dispatchEvent(event("pointermove", {
+    pointerId: 8,
+    clientX: 110,
+    clientY: 122,
+  }));
+
+  assert.equal(root.parentNode, doc.body);
+  assert.equal(root.style.left, "90px");
+  assert.equal(root.style.top, "102px");
+  assert.equal(root.style.width, "380px");
+  assert.equal(root.style.height, "420px");
+});
+
+test("auto-fits the detached card when the first streamed translation arrives", () => {
+  const { root, view } = mountDetachedCard({
+    state: { status: "loading", selection: { text: "source" } },
+  });
+
+  assert.equal(root.style.height, "260px");
+  const detachedLeft = root.style.left;
+  const detachedTop = root.style.top;
+  view.render({
+    status: "loading",
+    selection: { text: "source" },
+    translation: "流式返回的第一行译文",
+  });
+
+  assert.equal(root.style.height, "auto");
+  assert.equal(root.style.minHeight, "260px");
+  assert.equal(root.style.width, "380px");
+  assert.equal(root.style.left, detachedLeft);
+  assert.equal(root.style.top, detachedTop);
+  assert.match(root.className, /zct-floating-window--auto-fit/);
+});
+
+test("streaming auto-fit keeps the reader-chosen position when content grows", () => {
+  const { root, view } = mountDetachedCard({
+    state: { status: "loading", selection: { text: "source" } },
+  });
+  view.render({ status: "loading", translation: "第一行" });
+
+  root.mockRect = { width: 380, height: 500 };
+  root.style.left = "100px";
+  root.style.top = "300px";
+  view.render({ status: "loading", translation: "第一行\n第二行" });
+
+  assert.equal(root.style.left, "100px");
+  assert.equal(root.style.top, "300px");
+});
+
+test("auto-fit remembers its peak height when visible content becomes shorter", () => {
+  const doc = new FakeDocument();
+  let resizeCallback = null;
+  doc.defaultView.ResizeObserver = class {
+    constructor(callback) {
+      resizeCallback = callback;
+    }
+
+    observe() {}
+    disconnect() {}
+  };
+  const { root, view } = mountDetachedCard({ doc });
+  view.render({ status: "loading", translation: "第一行" });
+
+  root.mockRect = { width: 380, height: 430 };
+  resizeCallback();
+  assert.equal(root.style.minHeight, "430px");
+
+  root.mockRect = { width: 380, height: 300 };
+  resizeCallback();
+  assert.equal(root.style.minHeight, "430px");
+});
+
+test("auto-fit height is capped at 520px and the current viewport limit", () => {
+  const doc = new FakeDocument();
+  doc.defaultView.innerHeight = 900;
+  let resizeCallback = null;
+  doc.defaultView.ResizeObserver = class {
+    constructor(callback) {
+      resizeCallback = callback;
+    }
+
+    observe() {}
+    disconnect() {}
+  };
+  const { root, view } = mountDetachedCard({ doc });
+  view.render({ status: "result", translation: "长译文" });
+  root.mockRect = { width: 380, height: 700 };
+  resizeCallback();
+  assert.equal(root.style.minHeight, "520px");
+
+  doc.defaultView.innerHeight = 400;
+  doc.defaultView.dispatchEvent(event("resize"));
+  assert.equal(root.style.minHeight, "376px");
+});
+
+test("native resize switches the detached card to user-sized mode", () => {
+  const { root, view } = mountDetachedCard();
+  view.render({ status: "result", translation: "译文" });
+
+  root.mockRect = { width: 380, height: 400 };
+  root.style.left = "100px";
+  root.style.top = "100px";
+  const resizePointer = event("pointerdown", {
+    pointerId: 12,
+    clientX: 479,
+    clientY: 499,
+    target: root,
+  });
+  root.dispatchEvent(resizePointer);
+
+  assert.equal(resizePointer.defaultPrevented, undefined);
+  assert.doesNotMatch(root.className, /zct-floating-window--auto-fit/);
+  assert.equal(root.style.minHeight, "");
+  root.style.height = "300px";
+  view.render({ status: "result", translation: "更多译文" });
+  assert.equal(root.style.height, "300px");
+});
+
+test("resizing before the first result preserves the user's chosen height", () => {
+  const { root, view } = mountDetachedCard();
+  root.mockRect = { width: 380, height: 260 };
+  root.dispatchEvent(event("pointerdown", {
+    pointerId: 14,
+    clientX: 469,
+    clientY: 361,
+    target: root,
+  }));
+  root.style.height = "310px";
+
+  view.render({ status: "result", translation: "译文" });
+
+  assert.equal(root.style.height, "310px");
+  assert.doesNotMatch(root.className, /zct-floating-window--auto-fit/);
+});
+
+test("loading alone stays fixed while explanation and error are visible results", () => {
+  for (const visibleResult of [
+    { status: "loading", explanation: "术语说明" },
+    { status: "error", error: new Error("failed") },
+  ]) {
+    const { root, view } = mountDetachedCard({
+      state: { status: "loading", selection: { text: "source" } },
+    });
+
+    view.render({ status: "loading", selection: { text: "source" } });
+    assert.equal(root.style.height, "260px");
+    view.render(visibleResult);
+    assert.equal(root.style.height, "auto");
+  }
+});
+
+test("viewport changes keep an auto-fit titlebar reachable without pulling up its bottom", () => {
+  const doc = new FakeDocument();
+  const { root, view } = mountDetachedCard({ doc });
+  view.render({ status: "result", translation: "译文" });
+  root.mockRect = { width: 380, height: 500 };
+  root.style.left = "100px";
+  root.style.top = "300px";
+
+  doc.defaultView.innerHeight = 600;
+  doc.defaultView.dispatchEvent(event("resize"));
+
+  assert.equal(root.style.left, "100px");
+  assert.equal(root.style.top, "300px");
+});
+
+test("dragging an auto-fit card starts from its visible position", () => {
+  const doc = new FakeDocument();
+  doc.defaultView.innerHeight = 600;
+  const { root, titlebar, view } = mountDetachedCard({ doc });
+  view.render({ status: "result", translation: "译文" });
+  root.mockRect = { width: 380, height: 500 };
+  root.style.left = "100px";
+  root.style.top = "300px";
+
+  titlebar.dispatchEvent(event("pointerdown", {
+    pointerId: 18,
+    clientX: 120,
+    clientY: 320,
+    target: titlebar,
+  }));
+  doc.defaultView.dispatchEvent(event("pointermove", {
+    pointerId: 18,
+    clientX: 130,
+    clientY: 330,
+  }));
+
+  assert.equal(root.style.left, "110px");
+  assert.equal(root.style.top, "310px");
 });
 
 test("Escape closes and destroy removes overlays and every listener", () => {
@@ -447,6 +731,42 @@ test("reclamps the detached card after source expansion and viewport resize", ()
   assert.ok(rect.top + rect.height <= doc.defaultView.innerHeight - 12);
 });
 
+test("reclamps a manually resized detached card and disconnects its observer", () => {
+  const doc = new FakeDocument();
+  doc.defaultView.innerWidth = 500;
+  doc.defaultView.innerHeight = 420;
+  let resizeCallback = null;
+  let observed = null;
+  let disconnected = false;
+  doc.defaultView.ResizeObserver = class {
+    constructor(callback) {
+      resizeCallback = callback;
+    }
+
+    observe(node) {
+      observed = node;
+    }
+
+    disconnect() {
+      disconnected = true;
+    }
+  };
+
+  const view = new FloatingView();
+  const root = view.mount({ doc, anchorRects: [], handlers: {} });
+  root.mockRect = { width: 320, height: 240 };
+  root.style.left = "350px";
+  root.style.top = "300px";
+
+  assert.equal(observed, root);
+  resizeCallback();
+  assert.equal(root.style.left, "168px");
+  assert.equal(root.style.top, "168px");
+
+  view.destroy();
+  assert.equal(disconnected, true);
+});
+
 test("reports copy failure when no clipboard handler is available", async () => {
   const doc = new FakeDocument();
   const view = new FloatingView();
@@ -466,4 +786,33 @@ test("all card buttons expose at least a 36px minimum hit target", () => {
   );
   assert.match(FLOATING_WINDOW_CSS, /\.zct-translate\s*\{[^}]*min-height:\s*40px/s);
   assert.match(FLOATING_WINDOW_CSS, /\.zct-retry\s*\{[^}]*min-height:\s*36px/s);
+});
+
+test("uses the approved compact card dimensions and typography", () => {
+  assert.match(FLOATING_WINDOW_CSS, /width:\s*min\(380px,/);
+  assert.match(FLOATING_WINDOW_CSS, /max-height:\s*min\(520px,/);
+  assert.match(
+    FLOATING_WINDOW_CSS,
+    /\.zct-floating-window--auto-fit\s*\{[^}]*max-height:\s*min\(520px,\s*calc\(100vh - 24px\)\)/s,
+  );
+  assert.match(
+    FLOATING_WINDOW_CSS,
+    /\.zct-content-scroll\s*\{[^}]*overflow:\s*auto/s,
+  );
+  assert.match(FLOATING_WINDOW_CSS, /font:\s*12px\/1\.5/);
+  assert.match(
+    FLOATING_WINDOW_CSS,
+    /\.zct-translation\s*\{[^}]*font-size:\s*14px/s,
+  );
+});
+
+test("allows bounded resizing only for the detached card", () => {
+  assert.match(
+    FLOATING_WINDOW_CSS,
+    /\.zct-floating-window\s*\{[^}]*min-width:\s*min\(320px,\s*calc\(100vw - 24px\)\)[^}]*min-height:\s*min\(240px,\s*calc\(100vh - 24px\)\)[^}]*resize:\s*both/s,
+  );
+  assert.match(
+    FLOATING_WINDOW_CSS,
+    /\.zct-floating-window--embedded\s*\{[^}]*min-width:\s*0[^}]*min-height:\s*0[^}]*resize:\s*none/s,
+  );
 });

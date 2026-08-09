@@ -129,3 +129,86 @@ test("bootstrap asks the plugin to roll back when startup rejects", async () => 
   assert.deepEqual(calls, ["startup", "shutdown", "destruct"]);
   assert.equal(context.Zotero.ZoteroContextTranslator, undefined);
 });
+
+test("bootstrap cleans owned state when plugin shutdown rejects", async () => {
+  const calls = [];
+  const plugin = {
+    startup: async () => calls.push("startup"),
+    shutdown: async () => {
+      calls.push("shutdown");
+      throw new Error("plugin shutdown failed");
+    },
+  };
+  const context = await loadBootstrap(plugin, {
+    destruct: () => calls.push("destruct"),
+  });
+  await context.startup({ rootURI: "file:///plugin/" }, 0);
+
+  await assert.rejects(context.shutdown({}, 0), /plugin shutdown failed/);
+
+  assert.equal(context.Zotero.ZoteroContextTranslator, undefined);
+  assert.deepEqual(calls, ["startup", "shutdown", "destruct"]);
+  await context.shutdown({}, 0);
+  assert.deepEqual(calls, ["startup", "shutdown", "destruct"]);
+});
+
+test("bootstrap surfaces cleanup failure once after resetting owned state", async () => {
+  const calls = [];
+  const plugin = {
+    startup: async () => calls.push("startup"),
+    shutdown: async () => calls.push("shutdown"),
+  };
+  const context = await loadBootstrap(plugin, {
+    destruct() {
+      calls.push("destruct");
+      throw new Error("chrome destruction failed");
+    },
+  });
+  await context.startup({ rootURI: "file:///plugin/" }, 0);
+
+  await assert.rejects(context.shutdown({}, 0), /chrome destruction failed/);
+
+  assert.equal(context.Zotero.ZoteroContextTranslator, undefined);
+  assert.deepEqual(calls, ["startup", "shutdown", "destruct"]);
+  await context.shutdown({}, 0);
+  assert.deepEqual(calls, ["startup", "shutdown", "destruct"]);
+});
+
+async function loadBootstrap(plugin, chromeHandle) {
+  const source = await readFile(
+    new URL("../addon/bootstrap.js", import.meta.url),
+    "utf8",
+  );
+  const context = {
+    Services: {
+      io: { newURI: (value) => value },
+      scriptloader: {
+        loadSubScript(_specifier, scope) {
+          scope.ZoteroContextTranslator = { plugin, preferences: {} };
+        },
+      },
+    },
+    ChromeUtils: {},
+    Cu: {},
+    Cc: {
+      "@mozilla.org/addons/addon-manager-startup;1": {
+        getService: () => ({ registerChrome: () => chromeHandle }),
+      },
+    },
+    Ci: { amIAddonManagerStartup: {} },
+    Zotero: { initializationPromise: Promise.resolve(), logError() {} },
+    IOUtils: {},
+    PathUtils: {},
+    fetch() {},
+    AbortController,
+    URL,
+    setTimeout,
+    clearTimeout,
+    TextDecoder,
+    Uint8Array,
+    crypto: {},
+  };
+  context.Services.wm = { getMostRecentWindow: () => context };
+  vm.runInNewContext(source, context);
+  return context;
+}
