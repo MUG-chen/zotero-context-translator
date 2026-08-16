@@ -1,12 +1,13 @@
 # Zotero Context Translator
 
-面向 Zotero 9 PDF Reader 的上下文感知学术翻译插件。当前版本：`0.1.9`，支持 Zotero `9.0.*`。
+面向 Zotero 9 PDF Reader 的上下文感知学术翻译插件。当前版本：`0.2.0`，支持 Zotero `9.0.*`。
 
 ## 功能特点
 
-- 在 PDF Reader 中选中文本后显示浮动翻译卡片；仅选中不会自动调用 API。
-- 点击唯一的“翻译”按钮，才会发出一次 OpenAI 兼容的 Chat Completions 请求。
-- 同一张卡片中展示原文、译文、说明与错误状态，并支持复制、重试、拖动和 `Esc` 关闭。
+- 在 PDF Reader 中选中文本后只显示紧凑的“译 翻译”触发器；仅选中不会自动调用 API。
+- 点击触发器后才会发出一次 OpenAI 兼容的 Chat Completions 请求，并创建持久翻译卡片。
+- 同一论文中的后续选区不会关闭或打断活动卡片；点击新的翻译触发器才会替换翻译。
+- 同一张卡片中展示原文、译文、说明与错误状态，并支持复制、重试、拖动、缩放和 `Esc` 关闭。
 
 ## 系统要求
 
@@ -17,7 +18,7 @@
 ## 安装
 
 1. 克隆源代码并安装项目依赖。
-2. 在仓库根目录运行 `pnpm run build`，生成 `outputs/zotero-context-translator-0.1.9.xpi`。
+2. 在仓库根目录运行 `pnpm run build`，生成 `outputs/zotero-context-translator-0.2.0.xpi`。
 3. 在 Zotero 中打开“工具 → 插件”，点击齿轮并选择“Install Add-on From File…”，再选择生成的 XPI 文件。
 4. 安装后打开“编辑 → 设置 → 上下文翻译”，完成 API 配置。
 
@@ -38,8 +39,8 @@ Model Name: model-name
 ## 使用方法
 
 1. 在 Zotero PDF Reader 选中单词、句子或段落。
-2. 查看选区附近出现的浮动卡片。
-3. 点击“翻译”按钮发送一次请求，并在卡片内查看流式结果。
+2. 点击原生标注栏下方出现的紧凑“译 翻译”按钮。
+3. 在按钮下方展开的持久卡片中查看流式结果；继续选择同一论文的文本不会关闭它。
 
 打开设置页、打开论文、选择文本或建立本地索引均不会产生 API 请求；“测试连接”会发出一次最小请求，第三方服务仍可能计费。
 
@@ -59,7 +60,7 @@ Model Name: model-name
 pnpm run build
 ```
 
-构建产物为 `outputs/zotero-context-translator-0.1.9.xpi`。
+构建产物为 `outputs/zotero-context-translator-0.2.0.xpi`。
 
 ## 测试与验收
 

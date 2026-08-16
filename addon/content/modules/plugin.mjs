@@ -17,6 +17,10 @@ import {
 } from "./section-index.mjs";
 import { SelectionState } from "./selection-state.mjs";
 import {
+  SELECTION_TRIGGER_CSS,
+  SelectionTriggerView,
+} from "./selection-trigger-view.mjs";
+import {
   createLoginBackend,
   createLoginInfoFactory,
   createPreferenceBackend,
@@ -34,9 +38,10 @@ class TranslatorPlugin {
     this.state = dependencies.state ?? new SelectionState();
     this.started = false;
     this.view = null;
+    this.triggerView = null;
     this.abortController = null;
     this.preferencePaneID = null;
-    this.currentSelection = null;
+    this.triggeredSelectionSnapshot = null;
     this.handleReaderEvent = (event) => this.handleSelection(event);
   }
 
@@ -62,10 +67,11 @@ class TranslatorPlugin {
   async shutdown(context = {}) {
     if (!this.started) return;
     this.cancel();
+    this.#clearTrigger();
     this.view?.destroy();
     this.view = null;
     this.state.close();
-    this.currentSelection = null;
+    this.triggeredSelectionSnapshot = null;
     this.deps.readerAdapter.unregister();
     if (this.preferencePaneID) {
       this.deps.unregisterPreferences?.(this.preferencePaneID);
@@ -82,33 +88,68 @@ class TranslatorPlugin {
     const selection = this.deps.readerAdapter.extractSelection(event);
     if (!selection?.ok) return selection;
 
-    this.cancel();
-    this.view?.destroy();
-    this.currentSelection = selection;
-    this.state.select(selection);
+    this.#clearTrigger();
+    if (
+      this.triggeredSelectionSnapshot &&
+      this.triggeredSelectionSnapshot.attachmentID !== selection.attachmentID
+    ) {
+      this.close();
+    }
     this.deps.injectStyles?.(selection.doc);
-    this.view = this.deps.viewFactory();
-    this.view.mount({
-      doc: selection.doc,
-      append: selection.append,
-      anchorRects: selection.anchorRects ?? selection.rects,
-      handlers: {
-        translate: () => this.translate("sentence"),
-        retry: () => this.retry(),
-        copy: (text) => copyText(this.deps, selection, text),
-        close: () => this.close(),
-      },
-    });
-    this.view.render(this.state.current);
-
     Promise.resolve(this.deps.contextIndex.begin(selection)).catch((error) => {
       this.deps.logger?.error?.(error);
+    });
+    if (
+      this.triggeredSelectionSnapshot &&
+      selectionIdentity(this.triggeredSelectionSnapshot) === selectionIdentity(selection)
+    ) {
+      return selection;
+    }
+    const trigger = this.deps.triggerViewFactory();
+    this.triggerView = trigger;
+    trigger.mount({
+      doc: selection.doc,
+      append: selection.append,
+      selection,
+      onTranslate: ({ selection: snapshot, anchorRect }) => {
+        this.#clearTrigger(trigger);
+        return this.activateSelection(snapshot, anchorRect);
+      },
+      onReaderClose: () => {
+        if (this.triggerView === trigger) this.triggerView = null;
+      },
     });
     return selection;
   }
 
+  async activateSelection(selection, anchorRect) {
+    if (!selection?.ok) return null;
+    this.cancel();
+    this.triggeredSelectionSnapshot = selection;
+    this.state.select(selection);
+
+    if (this.view) {
+      this.view.prepareForTranslation?.();
+    } else {
+      this.view = this.deps.viewFactory();
+      this.view.mountActive({
+        doc: selection.doc,
+        anchorRect,
+        handlers: {
+          retry: () => this.retry(),
+          copy: (text) => {
+            if (!this.triggeredSelectionSnapshot) return null;
+            return copyText(this.deps, this.triggeredSelectionSnapshot, text);
+          },
+          close: () => this.close(),
+        },
+      });
+    }
+    return this.translate("sentence");
+  }
+
   async translate(mode = "sentence") {
-    const selection = this.currentSelection;
+    const selection = this.triggeredSelectionSnapshot;
     if (!selection) return null;
     this.cancel();
     const requestID = this.state.startRequest(mode);
@@ -181,14 +222,15 @@ class TranslatorPlugin {
   }
 
   retry() {
-    if (!this.currentSelection) return null;
+    if (!this.triggeredSelectionSnapshot) return null;
     return this.translate(this.state.current.mode ?? "sentence");
   }
 
   close() {
     this.cancel();
+    this.#clearTrigger();
     this.state.close();
-    this.currentSelection = null;
+    this.triggeredSelectionSnapshot = null;
     this.view?.destroy();
     this.view = null;
   }
@@ -219,13 +261,27 @@ class TranslatorPlugin {
   }
 
   async reanalyze() {
-    if (!this.currentSelection) return;
-    await this.deps.contextIndex.reanalyze?.(this.currentSelection);
+    if (!this.triggeredSelectionSnapshot) return;
+    await this.deps.contextIndex.reanalyze?.(this.triggeredSelectionSnapshot);
   }
 
   async clearCache() {
     return this.deps.contextIndex.clear?.();
   }
+
+  #clearTrigger(trigger = this.triggerView) {
+    trigger?.destroy();
+    if (this.triggerView === trigger) this.triggerView = null;
+  }
+}
+
+function selectionIdentity(selection) {
+  return JSON.stringify([
+    selection.attachmentID,
+    selection.pageIndex,
+    selection.text,
+    selection.rects,
+  ]);
 }
 
 export class DocumentContextIndex {
@@ -650,6 +706,7 @@ async function createDefaultDependencies(rootURI) {
   return {
     readerAdapter,
     viewFactory: () => new FloatingView(),
+    triggerViewFactory: () => new SelectionTriggerView(),
     injectStyles: ensureReaderStylesheet,
     contextIndex,
     api,
@@ -701,7 +758,7 @@ function ensureReaderStylesheet(doc) {
   if (!doc?.head || doc.getElementById?.("zct-floating-window-styles")) return;
   const style = doc.createElement("style");
   style.id = "zct-floating-window-styles";
-  style.textContent = FLOATING_WINDOW_CSS;
+  style.textContent = `${FLOATING_WINDOW_CSS}\n${SELECTION_TRIGGER_CSS}`;
   doc.head.append(style);
 }
 

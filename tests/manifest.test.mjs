@@ -18,6 +18,6 @@ test("manifest targets Zotero 9.0.*", async () => {
     app.update_url,
     "https://github.com/MUG-chen/zotero-context-translator/releases/latest/download/updates.json",
   );
-  assert.equal(manifest.version, "0.1.9");
-  assert.equal(packageMetadata.version, "0.1.9");
+  assert.equal(manifest.version, "0.2.0");
+  assert.equal(packageMetadata.version, "0.2.0");
 });

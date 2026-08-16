@@ -25,11 +25,24 @@ function selection(text = "selected sentence") {
 }
 
 function makeDeps(overrides = {}) {
+  const trigger = {
+    destroyed: 0,
+    mountOptions: null,
+    mount(options) {
+      this.mountOptions = options;
+    },
+    destroy() {
+      this.destroyed += 1;
+    },
+  };
   const view = {
     states: [],
     destroyed: 0,
     mountOptions: null,
     mount(options) {
+      this.mountOptions = options;
+    },
+    mountActive(options) {
       this.mountOptions = options;
     },
     render(state) {
@@ -38,6 +51,7 @@ function makeDeps(overrides = {}) {
     destroy() {
       this.destroyed += 1;
     },
+    prepareForTranslation() {},
   };
   const calls = {
     api: [],
@@ -59,6 +73,7 @@ function makeDeps(overrides = {}) {
       },
       extractSelection: (event) => event,
     },
+    triggerViewFactory: () => trigger,
     viewFactory: () => view,
     injectStyles: () => {},
     contextIndex: {
@@ -121,12 +136,20 @@ function makeDeps(overrides = {}) {
     logger: { error() {} },
     ...overrides,
   };
-  return { deps, view, calls };
+  return { deps, trigger, view, calls };
 }
 
-test("shows ready UI before indexing and never calls API until translate", async () => {
+async function activate(plugin, trigger, selected = selection()) {
+  await plugin.handleSelection(selected);
+  return trigger.mountOptions.onTranslate({
+    selection: selected,
+    anchorRect: { left: 100, top: 120, right: 180, bottom: 152 },
+  });
+}
+
+test("shows a trigger before indexing and never calls API until activation", async () => {
   const pending = deferred();
-  const { deps, view, calls } = makeDeps({
+  const { deps, trigger, view, calls } = makeDeps({
     contextIndex: {
       begin(snapshot) {
         calls.indexBegin.push(snapshot);
@@ -143,31 +166,36 @@ test("shows ready UI before indexing and never calls API until translate", async
 
   await plugin.handleSelection(selection());
 
-  assert.equal(view.states.at(-1).status, "ready");
+  assert.ok(trigger.mountOptions);
+  assert.equal(view.states.length, 0);
+  assert.equal(plugin.state.current.status, "idle");
   assert.equal(calls.api.length, 0);
   assert.equal(calls.indexBegin.length, 1);
   pending.resolve();
 });
 
-test("floating translate action normalizes legacy modes and calls API once", async () => {
-  const { deps, view, calls } = makeDeps();
+test("selection trigger starts the single sentence mode and calls API once", async () => {
+  const { deps, trigger, calls } = makeDeps();
   const plugin = createPlugin(deps);
 
-  await plugin.handleSelection(selection());
+  const selected = selection();
+  await plugin.handleSelection(selected);
   assert.equal(calls.api.length, 0);
 
-  await view.mountOptions.handlers.translate("paragraph");
+  await trigger.mountOptions.onTranslate({
+    selection: selected,
+    anchorRect: { left: 100, top: 120, right: 180, bottom: 152 },
+  });
 
   assert.equal(calls.api.length, 1);
   assert.equal(plugin.state.current.mode, "sentence");
 });
 
 test("clicking translate uses context, streams in the same view, and caches metadata", async () => {
-  const { deps, view, calls } = makeDeps();
+  const { deps, trigger, view, calls } = makeDeps();
   const plugin = createPlugin(deps);
-  await plugin.handleSelection(selection());
 
-  const result = await plugin.translate("sentence");
+  const result = await activate(plugin, trigger);
 
   assert.equal(result.translation, "译文");
   assert.equal(calls.api.length, 1);
@@ -179,15 +207,15 @@ test("clicking translate uses context, streams in the same view, and caches meta
 
 test("floating close cancels work and destroys the selection overlay", async () => {
   const request = deferred();
-  const { deps, view } = makeDeps({
+  const { deps, trigger, view } = makeDeps({
     api: {
       streamTranslation: () => request.promise,
       testConnection: async () => ({ ok: true }),
     },
   });
   const plugin = createPlugin(deps);
-  await plugin.handleSelection(selection());
-  const translation = plugin.translate("sentence");
+  const translation = activate(plugin, trigger);
+  await Promise.resolve();
   await Promise.resolve();
 
   view.mountOptions.handlers.close();
@@ -214,7 +242,7 @@ test("startup and shutdown are idempotent and leave no registered hooks", async 
 
 test("startup rolls back the reader hook when preference registration fails", async () => {
   const failure = new Error("preference pane failed");
-  const { deps, calls } = makeDeps({
+  const { deps, trigger, calls } = makeDeps({
     registerPreferences: async () => {
       calls.preferenceRegister += 1;
       throw failure;
@@ -231,7 +259,7 @@ test("startup rolls back the reader hook when preference registration fails", as
 
 test("translation waits for the context index before calling the API", async () => {
   const context = deferred();
-  const { deps, calls } = makeDeps({
+  const { deps, trigger, calls } = makeDeps({
     contextIndex: {
       begin() {
         return context.promise;
@@ -245,9 +273,8 @@ test("translation waits for the context index before calling the API", async () 
     },
   });
   const plugin = createPlugin(deps);
-  await plugin.handleSelection(selection());
 
-  const translation = plugin.translate("sentence");
+  const translation = activate(plugin, trigger);
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(calls.api.length, 0);
@@ -266,7 +293,7 @@ test("translation waits for the context index before calling the API", async () 
 
 test("a failed context index blocks the API request", async () => {
   const failure = new Error("PDF extraction failed");
-  const { deps, calls, view } = makeDeps({
+  const { deps, trigger, calls, view } = makeDeps({
     contextIndex: {
       begin: async () => {
         throw failure;
@@ -279,9 +306,8 @@ test("a failed context index blocks the API request", async () => {
     },
   });
   const plugin = createPlugin(deps);
-  await plugin.handleSelection(selection());
 
-  const result = await plugin.translate("sentence");
+  const result = await activate(plugin, trigger);
 
   assert.equal(result, null);
   assert.equal(calls.api.length, 0);
@@ -302,9 +328,9 @@ test("preference connection test is an explicit one-token API action", async () 
   assert.equal(calls.api.length, 1);
 });
 
-test("manual retry reuses the current selection and last translation mode", async () => {
+test("manual retry reuses the triggered selection and last translation mode", async () => {
   let attempts = 0;
-  const { deps, view } = makeDeps({
+  const { deps, trigger, view } = makeDeps({
     api: {
       async streamTranslation() {
         attempts += 1;
@@ -317,18 +343,17 @@ test("manual retry reuses the current selection and last translation mode", asyn
     },
   });
   const plugin = createPlugin(deps);
-  await plugin.handleSelection(selection());
-  await plugin.translate("paragraph");
+  await activate(plugin, trigger);
 
   await view.mountOptions.handlers.retry();
 
   assert.equal(attempts, 2);
-  assert.equal(plugin.state.current.mode, "paragraph");
+  assert.equal(plugin.state.current.mode, "sentence");
   assert.equal(plugin.state.current.translation, "重试译文");
 });
 
 test("renders API retry progress without replacing the floating window", async () => {
-  const { deps, view } = makeDeps({
+  const { deps, trigger, view } = makeDeps({
     api: {
       async streamTranslation(request, callbacks) {
         callbacks.onProgress?.({
@@ -350,9 +375,8 @@ test("renders API retry progress without replacing the floating window", async (
     return view;
   };
   const plugin = createPlugin(deps);
-  await plugin.handleSelection(selection());
 
-  await plugin.translate("sentence");
+  await activate(plugin, trigger);
 
   assert.equal(viewsCreated, 1);
   assert.ok(
@@ -361,7 +385,7 @@ test("renders API retry progress without replacing the floating window", async (
 });
 
 test("keeps streamed translation visible when the active request fails", async () => {
-  const { deps, view } = makeDeps({
+  const { deps, trigger, view } = makeDeps({
     api: {
       async streamTranslation(request, callbacks) {
         callbacks.onDelta?.("<<<TRANSLATION>>>\n部分译文");
@@ -377,9 +401,8 @@ test("keeps streamed translation visible when the active request fails", async (
     },
   });
   const plugin = createPlugin(deps);
-  await plugin.handleSelection(selection());
 
-  await plugin.translate("sentence");
+  await activate(plugin, trigger);
 
   assert.equal(plugin.state.current.status, "error");
   assert.equal(plugin.state.current.translation, "部分译文");
@@ -387,9 +410,9 @@ test("keeps streamed translation visible when the active request fails", async (
 });
 
 test("copy handler fails explicitly when no clipboard implementation exists", async () => {
-  const { deps, view } = makeDeps();
+  const { deps, trigger, view } = makeDeps();
   const plugin = createPlugin(deps);
-  await plugin.handleSelection(selection());
+  await activate(plugin, trigger);
 
   assert.throws(
     () => view.mountOptions.handlers.copy("译文"),

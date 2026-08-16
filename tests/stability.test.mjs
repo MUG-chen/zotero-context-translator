@@ -14,9 +14,12 @@ function snapshot(index) {
   };
 }
 
-test("100 selections, 50 translations, and five documents leave one view and no hooks", async () => {
-  let activeViews = 0;
-  let peakViews = 0;
+test("100 selections, 50 translations, and five documents leave at most one card and trigger", async () => {
+  let activeCards = 0;
+  let peakCards = 0;
+  let activeTriggers = 0;
+  let peakTriggers = 0;
+  let latestTrigger = null;
   let registered = 0;
   let apiCalls = 0;
   const indexBegins = new Map();
@@ -26,17 +29,35 @@ test("100 selections, 50 translations, and five documents leave one view and no 
       unregister() { registered -= 1; },
       extractSelection: (value) => value,
     },
+    triggerViewFactory: () => {
+      let destroyed = false;
+      const trigger = {
+        mountOptions: null,
+        mount(options) { this.mountOptions = options; },
+        destroy() {
+          if (destroyed) return;
+          destroyed = true;
+          activeTriggers -= 1;
+        },
+      };
+      activeTriggers += 1;
+      peakTriggers = Math.max(peakTriggers, activeTriggers);
+      latestTrigger = trigger;
+      return trigger;
+    },
     viewFactory: () => {
       let destroyed = false;
-      activeViews += 1;
-      peakViews = Math.max(peakViews, activeViews);
+      activeCards += 1;
+      peakCards = Math.max(peakCards, activeCards);
       return {
         mount() {},
+        mountActive() {},
         render() {},
+        prepareForTranslation() {},
         destroy() {
           if (!destroyed) {
             destroyed = true;
-            activeViews -= 1;
+            activeCards -= 1;
           }
         },
       };
@@ -74,24 +95,48 @@ test("100 selections, 50 translations, and five documents leave one view and no 
 
   await plugin.startup();
   for (let index = 0; index < 100; index += 1) {
-    await plugin.handleSelection(snapshot(index));
-    if (index < 50) await plugin.translate("sentence");
+    const selected = snapshot(index);
+    await plugin.handleSelection(selected);
+    if (index < 50) {
+      await latestTrigger.mountOptions.onTranslate({
+        selection: selected,
+        anchorRect: { left: 100, top: 120, right: 180, bottom: 152 },
+      });
+    }
   }
-  assert.equal(peakViews, 1);
-  assert.equal(activeViews, 1);
+  assert.equal(peakCards, 1);
+  assert.equal(peakTriggers, 1);
+  assert.equal(activeCards, 0);
+  assert.equal(activeTriggers, 1);
   assert.equal(apiCalls, 50);
   assert.equal(indexBegins.size, 5);
 
   await plugin.shutdown();
-  assert.equal(activeViews, 0);
+  assert.equal(activeCards, 0);
+  assert.equal(activeTriggers, 0);
   assert.equal(registered, 0);
 });
 
 test("cancellation settles within one second and a late result cannot revive the view", async () => {
   let destroyed = 0;
+  let trigger = null;
   const plugin = createPlugin({
     readerAdapter: { register() {}, unregister() {}, extractSelection: (value) => value },
-    viewFactory: () => ({ mount() {}, render() {}, destroy() { destroyed += 1; } }),
+    triggerViewFactory: () => {
+      trigger = {
+        mountOptions: null,
+        mount(options) { this.mountOptions = options; },
+        destroy() {},
+      };
+      return trigger;
+    },
+    viewFactory: () => ({
+      mount() {},
+      mountActive() {},
+      render() {},
+      prepareForTranslation() {},
+      destroy() { destroyed += 1; },
+    }),
     injectStyles() {},
     contextIndex: {
       begin: () => Promise.resolve(),
@@ -116,8 +161,12 @@ test("cancellation settles within one second and a late result cannot revive the
     credentialStore: { getAPIKey: async () => "key", clearAPIKey: async () => {} },
     logger: { error() {} },
   });
-  await plugin.handleSelection(snapshot(1));
-  const request = plugin.translate("sentence");
+  const selected = snapshot(1);
+  await plugin.handleSelection(selected);
+  const request = trigger.mountOptions.onTranslate({
+    selection: selected,
+    anchorRect: { left: 100, top: 120, right: 180, bottom: 152 },
+  });
   await Promise.resolve();
   const started = performance.now();
   plugin.close();

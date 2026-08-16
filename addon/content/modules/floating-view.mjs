@@ -368,27 +368,63 @@ export class FloatingView {
   #autoFitPeakHeight = null;
 
   mount({ doc, append, anchorRects = [], handlers = {} }) {
+    return this.#mount({ doc, append, anchorRects, handlers, activeCard: false });
+  }
+
+  mountActive({ doc, anchorRect, handlers = {} }) {
+    return this.#mount({
+      doc,
+      anchorRects: anchorRect ? [anchorRect] : [],
+      handlers,
+      activeCard: true,
+    });
+  }
+
+  #mount({ doc, append, anchorRects, handlers, activeCard }) {
     if (!doc?.createElement || !doc.body) {
       throw new TypeError("A reader document is required");
     }
     this.destroy();
     this.#doc = doc;
     this.#handlers = handlers;
-    this.#embedded = typeof append === "function";
+    this.#embedded = !activeCard && typeof append === "function";
     this.#sourceExpanded = false;
-    this.#overlay = this.#embedded ? null : createSelectionOverlay(doc, anchorRects);
+    this.#overlay = !activeCard && !this.#embedded
+      ? createSelectionOverlay(doc, anchorRects)
+      : null;
     this.#root = createDialog(doc, this.#embedded);
     this.#nodes = populateDialog(doc, this.#root);
     if (this.#embedded) {
       append(this.#root);
     } else {
-      doc.body.append(this.#overlay, this.#root);
-      positionDialog(this.#root, anchorRects, doc.defaultView);
+      if (this.#overlay) doc.body.append(this.#overlay);
+      doc.body.append(this.#root);
+      positionDialog(this.#root, anchorRects, doc.defaultView, {
+        belowAnchor: activeCard,
+      });
     }
+    this.#nodes.actions.hidden = activeCard;
+    this.#nodes.actions.style.display = activeCard ? "none" : "";
+    if (activeCard) this.#initializePersistentSizing();
     this.#bindEvents();
     this.#observeResize();
     this.render({ status: "ready", selection: null });
     return this.#root;
+  }
+
+  prepareForTranslation() {
+    if (
+      !this.#root ||
+      this.#detachedSizingMode !== DETACHED_SIZING.AUTO_FIT
+    ) return;
+    this.#root.style.height = `${this.#detachedHeight}px`;
+    this.#root.style.minHeight = "";
+    this.#root.className = this.#root.className
+      .split(/\s+/)
+      .filter((name) => name && name !== "zct-floating-window--auto-fit")
+      .join(" ");
+    this.#detachedSizingMode = DETACHED_SIZING.PENDING_RESULT;
+    this.#autoFitPeakHeight = null;
   }
 
   render(state) {
@@ -460,6 +496,22 @@ export class FloatingView {
   #listen(target, type, listener) {
     target.addEventListener(type, listener);
     this.#listeners.push([target, type, listener]);
+  }
+
+  #initializePersistentSizing() {
+    const rect = this.#root.getBoundingClientRect();
+    const view = this.#doc.defaultView;
+    const maxHeight = Math.max(
+      0,
+      (view?.innerHeight ?? 800) - 2 * VIEWPORT_MARGIN,
+    );
+    this.#detachedHeight = clamp(
+      rect.height,
+      Math.min(240, maxHeight),
+      maxHeight,
+    );
+    this.#root.style.height = `${this.#detachedHeight}px`;
+    this.#detachedSizingMode = DETACHED_SIZING.PENDING_RESULT;
   }
 
   #bindEvents() {
@@ -822,6 +874,7 @@ function populateDialog(doc, root) {
     sourceCard,
     sourceToggle,
     sourcePreview,
+    actions,
     translateButton,
     statusRow,
     statusIndicator,
@@ -875,14 +928,18 @@ function createSelectionOverlay(doc, rects) {
   return overlay;
 }
 
-function positionDialog(root, anchorRects, view) {
+function positionDialog(root, anchorRects, view, { belowAnchor = false } = {}) {
   const anchor = anchorRects.length ? normalizeRect(anchorRects[0]) : null;
   const width = view?.innerWidth ?? 1200;
   const height = view?.innerHeight ?? 800;
   const size = dialogSize(root);
-  let left = anchor ? anchor.right + VIEWPORT_MARGIN : (width - size.width) / 2;
+  let left = anchor
+    ? belowAnchor
+      ? anchor.left
+      : anchor.right + VIEWPORT_MARGIN
+    : (width - size.width) / 2;
   let top = anchor ? anchor.bottom + VIEWPORT_MARGIN : (height - size.height) / 2;
-  if (left + size.width > width - VIEWPORT_MARGIN && anchor) {
+  if (!belowAnchor && left + size.width > width - VIEWPORT_MARGIN && anchor) {
     left = anchor.left - size.width - VIEWPORT_MARGIN;
   }
   setClampedPosition(root, left, top, view);

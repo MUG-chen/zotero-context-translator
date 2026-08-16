@@ -55,6 +55,67 @@ test("mounts one floating dialog and selection overlay without any sidebar", () 
   assert.ok(doc.querySelector(".zct-result-scroll"));
 });
 
+test("persistent active card starts anchored without an overlay or translate action", () => {
+  const doc = new FakeDocument();
+  const view = new FloatingView();
+  const root = view.mountActive({
+    doc,
+    anchorRect: { left: 100, top: 120, right: 180, bottom: 140 },
+    handlers: {},
+  });
+
+  assert.equal(doc.querySelectorAll('[role="dialog"]').length, 1);
+  assert.equal(doc.querySelectorAll(".zct-selection-overlay").length, 0);
+  assert.equal(root.querySelector(".zct-actions").hidden, true);
+  assert.equal(root.querySelector(".zct-actions").style.display, "none");
+  assert.match(root.style.height, /px$/);
+  assert.equal(root.style.left, "100px");
+  assert.equal(root.style.top, "152px");
+
+  view.render({
+    status: "result",
+    selection: { text: "source" },
+    translation: "译文",
+  });
+  assert.equal(root.style.height, "auto");
+  assert.match(root.className, /zct-floating-window--auto-fit/);
+});
+
+test("new translation resets auto-fit height but preserves a user-set height", () => {
+  const doc = new FakeDocument();
+  const view = new FloatingView();
+  const root = view.mountActive({
+    doc,
+    anchorRect: { left: 100, top: 120, right: 180, bottom: 140 },
+    handlers: {},
+  });
+  const initialHeight = root.style.height;
+  const initialLeft = root.style.left;
+  const initialTop = root.style.top;
+
+  view.render({ status: "result", translation: "first translation" });
+  view.prepareForTranslation();
+
+  assert.equal(root.style.height, initialHeight);
+  assert.equal(root.style.left, initialLeft);
+  assert.equal(root.style.top, initialTop);
+  assert.doesNotMatch(root.className, /zct-floating-window--auto-fit/);
+
+  view.render({ status: "result", translation: "second translation" });
+  root.mockRect = { width: 380, height: 400 };
+  const rect = root.getBoundingClientRect();
+  root.dispatchEvent(event("pointerdown", {
+    pointerId: 19,
+    clientX: rect.right - 1,
+    clientY: rect.bottom - 1,
+    target: root,
+  }));
+  root.style.height = "310px";
+  view.prepareForTranslation();
+
+  assert.equal(root.style.height, "310px");
+});
+
 test("renders one explicit translate action without mode choices", () => {
   const doc = new FakeDocument();
   const calls = [];
