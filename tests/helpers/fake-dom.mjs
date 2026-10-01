@@ -44,6 +44,9 @@ export class FakeElement extends FakeEventTarget {
     this.className = "";
     this.textContent = "";
     this.hidden = false;
+    this.scrollTop = 0;
+    this.clientHeight = 0;
+    this.scrollHeight = 0;
   }
 
   append(...nodes) {
@@ -73,6 +76,10 @@ export class FakeElement extends FakeEventTarget {
 
   getAttribute(name) {
     return this.attributes.get(name) ?? null;
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
   }
 
   querySelector(selector) {
@@ -120,6 +127,9 @@ export class FakeDocument extends FakeEventTarget {
     this.defaultView = new FakeEventTarget();
     this.defaultView.innerWidth = 1200;
     this.defaultView.innerHeight = 800;
+    this.defaultView.matchMedia = () => ({ matches: false });
+    this.defaultView.requestAnimationFrame = () => 0;
+    this.defaultView.cancelAnimationFrame = () => {};
     this.body = new FakeElement("body", this);
   }
 
