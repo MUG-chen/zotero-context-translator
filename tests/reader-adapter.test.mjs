@@ -5,6 +5,26 @@ import {
   ReaderAdapter,
 } from "../addon/content/modules/reader-adapter.mjs";
 
+function zotero906ReaderAPI() {
+  const api = {
+    _registeredListeners: [],
+    registerEventListener(type, handler, pluginID) {
+      this._registeredListeners.push({ pluginID, type, handler });
+    },
+    unregisterEventListener(type, handler) {
+      this._registeredListeners = this._registeredListeners.filter(
+        (x) => x.type === type && x.handler === handler,
+      );
+    },
+    _unregisterEventListenerByPluginID(pluginID) {
+      this._registeredListeners = this._registeredListeners.filter(
+        (entry) => entry.pluginID !== pluginID,
+      );
+    },
+  };
+  return api;
+}
+
 test("registers and unregisters the official text-selection popup handler", () => {
   const calls = [];
   const readerAPI = {
@@ -20,6 +40,47 @@ test("registers and unregisters the official text-selection popup handler", () =
   assert.equal(calls[0][1], "renderTextSelectionPopup");
   assert.equal(calls[0][3], "plugin@test");
   assert.deepEqual(calls[1].slice(0, 2), ["unregister", "renderTextSelectionPopup"]);
+});
+
+test("keeps the selection listener when another plugin hits the Zotero 9.0.6 unregister bug", () => {
+  const api = zotero906ReaderAPI();
+  const ours = () => {};
+  const theirs = () => {};
+  const adapter = new ReaderAdapter({ readerAPI: api, pluginID: "plugin@test" });
+  api.registerEventListener("renderTextSelectionPopup", theirs, "other@test");
+  adapter.register(ours);
+
+  api.unregisterEventListener("renderTextSelectionPopup", theirs);
+
+  assert.equal(
+    api._registeredListeners.some((entry) => entry.handler === ours),
+    true,
+  );
+  assert.equal(adapter.isListening(), true);
+});
+
+test("rebinds the selection listener if Zotero dropped it without going through unregister", () => {
+  const api = zotero906ReaderAPI();
+  const handler = () => {};
+  const adapter = new ReaderAdapter({ readerAPI: api, pluginID: "plugin@test" });
+  adapter.register(handler);
+  api._registeredListeners = [];
+
+  adapter.ensureRegistered();
+
+  assert.equal(api._registeredListeners.length, 1);
+  assert.equal(api._registeredListeners[0].handler, handler);
+});
+
+test("does not register the same selection handler twice", () => {
+  const api = zotero906ReaderAPI();
+  const handler = () => {};
+  const adapter = new ReaderAdapter({ readerAPI: api, pluginID: "plugin@test" });
+  adapter.register(handler);
+  adapter.register(handler);
+  adapter.ensureRegistered();
+
+  assert.equal(api._registeredListeners.length, 1);
 });
 
 test("normalizes object and JSON-string annotation positions", () => {

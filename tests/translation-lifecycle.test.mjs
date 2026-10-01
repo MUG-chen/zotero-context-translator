@@ -227,8 +227,8 @@ test("a selection in another paper closes the previous active card", async () =>
   assert.equal(apiCalls.length, 1);
 });
 
-test("a duplicate event for the active selection does not recreate a trigger", async () => {
-  const { plugin, triggers } = harness();
+test("a duplicate event for the active selection remounts the trigger without starting a request", async () => {
+  const { plugin, triggers, apiCalls } = harness();
   const selected = snapshot("same sentence");
   await plugin.handleSelection(selected);
   await triggers[0].mountOptions.onTranslate({
@@ -238,7 +238,51 @@ test("a duplicate event for the active selection does not recreate a trigger", a
 
   await plugin.handleSelection({ ...selected });
 
-  assert.equal(triggers.length, 1);
+  assert.equal(triggers.length, 2);
+  assert.equal(triggers[0].destroyed, 1);
+  assert.equal(apiCalls.length, 1);
+});
+
+test("clicking the trigger on the same sentence cancels and retriggers translation", async () => {
+  const signals = [];
+  let call = 0;
+  const { plugin, triggers, cards } = harness({
+    api: {
+      streamTranslation(options) {
+        call += 1;
+        signals.push(options.signal);
+        if (call === 2) return Promise.resolve({ translation: "second translation" });
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener(
+            "abort",
+            () => reject(new Error("cancelled")),
+            { once: true },
+          );
+        });
+      },
+      testConnection: async () => ({ ok: true }),
+    },
+  });
+  const selected = snapshot("same sentence");
+  await plugin.handleSelection(selected);
+  const firstTranslation = triggers[0].mountOptions.onTranslate({
+    selection: selected,
+    anchorRect: { left: 100, top: 120, right: 180, bottom: 152 },
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  await plugin.handleSelection({ ...selected });
+  await triggers[1].mountOptions.onTranslate({
+    selection: selected,
+    anchorRect: { left: 100, top: 120, right: 180, bottom: 152 },
+  });
+  await firstTranslation.catch(() => {});
+
+  assert.equal(signals[0].aborted, true);
+  assert.equal(call, 2);
+  assert.equal(cards.length, 1);
+  assert.equal(plugin.state.current.translation, "second translation");
 });
 
 test("closing an active card also clears a later ephemeral trigger", async () => {

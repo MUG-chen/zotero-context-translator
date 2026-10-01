@@ -5,11 +5,11 @@ The Zotero Context Translator presents context-aware academic translations witho
 ## Language
 
 **Selection Translation Trigger**:
-An ephemeral compact action attached below Zotero's current text-selection popup. It captures that selection and starts a translation only when explicitly clicked. A later selection in the same paper replaces only the trigger; a selection in another paper ends the previous paper's Active Translation Card.
+An ephemeral compact action attached below Zotero's current text-selection popup. It captures that selection and starts a translation only when explicitly clicked. A later selection in the same paper, including the same sentence as the Triggered Selection Snapshot, replaces only the trigger; a selection in another paper ends the previous paper's Active Translation Card. Every click starts a translation, cancelling any in-flight request.
 _Avoid_: Mini translation card, translation bar, floating translator
 
 **Active Translation Card**:
-The single full translation card whose translation has been explicitly triggered. Its loading, success, and error states are independent of later text selections in the same paper. Clicking another Selection Translation Trigger reuses the card: its position and width persist; a user-set height persists, while an Auto-fit height resets compactly and grows for the new result.
+The single full translation card whose translation has been explicitly triggered. Its loading, success, and error states are independent of later text selections in the same paper. Clicking a Selection Translation Trigger reuses the card and starts a new translation: position and width persist; a user-set height persists, while an Auto-fit height resets compactly and grows for the new result.
 _Avoid_: Current selection card, pinned card, persistent window
 
 **Triggered Selection Snapshot**:
@@ -31,3 +31,11 @@ _Avoid_: Automatic resize
 **User-sized**:
 The detached card's sizing mode after the reader explicitly resizes it; later content respects that size for the current card's lifetime.
 _Avoid_: Fixed height, locked card
+
+**Result Pane**:
+The scrollable interior of an Active Translation Card that holds the translation, explanation, and error states. Wheel and scrollbar motion stay inside this pane and do not move the PDF.
+_Avoid_: page, card page, content area, inner window
+
+**Source Preview**:
+The original selected text shown on an Active Translation Card. When long, it expands into its own scrollable region.
+_Avoid_: original box, source card, quote area

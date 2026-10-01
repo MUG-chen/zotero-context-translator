@@ -240,6 +240,38 @@ test("startup and shutdown are idempotent and leave no registered hooks", async 
   assert.equal(calls.preferenceUnregister, 1);
 });
 
+test("startup rebinds the reader listener from a lifecycle hook and releases it on shutdown", async () => {
+  const ensureCalls = [];
+  let released = 0;
+  const { deps, calls } = makeDeps({
+    readerAdapter: {
+      register(handler) {
+        calls.register += 1;
+        this.handler = handler;
+      },
+      unregister() {
+        calls.unregister += 1;
+      },
+      ensureRegistered() {
+        ensureCalls.push("ensure");
+      },
+      extractSelection: (event) => event,
+    },
+    attachReaderLifecycle(ensure) {
+      ensure();
+      return () => {
+        released += 1;
+      };
+    },
+  });
+  const plugin = createPlugin(deps);
+  await plugin.startup();
+  await plugin.shutdown();
+
+  assert.deepEqual(ensureCalls, ["ensure"]);
+  assert.equal(released, 1);
+});
+
 test("startup rolls back the reader hook when preference registration fails", async () => {
   const failure = new Error("preference pane failed");
   const { deps, trigger, calls } = makeDeps({

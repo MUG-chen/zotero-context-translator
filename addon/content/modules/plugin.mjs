@@ -42,7 +42,14 @@ class TranslatorPlugin {
     this.abortController = null;
     this.preferencePaneID = null;
     this.triggeredSelectionSnapshot = null;
-    this.handleReaderEvent = (event) => this.handleSelection(event);
+    this.releaseLifecycle = null;
+    this.handleReaderEvent = (event) => {
+      this.deps.readerAdapter.ensureRegistered?.();
+      return Promise.resolve(this.handleSelection(event)).catch((error) => {
+        this.deps.logger?.error?.(error);
+        return null;
+      });
+    };
   }
 
   async startup() {
@@ -52,8 +59,13 @@ class TranslatorPlugin {
     try {
       this.deps.readerAdapter.register(this.handleReaderEvent);
       readerRegistered = true;
+      this.releaseLifecycle = this.deps.attachReaderLifecycle?.(() => {
+        this.deps.readerAdapter.ensureRegistered?.();
+      }) ?? null;
       this.preferencePaneID = await this.deps.registerPreferences?.();
     } catch (error) {
+      this.releaseLifecycle?.();
+      this.releaseLifecycle = null;
       if (this.preferencePaneID) {
         this.deps.unregisterPreferences?.(this.preferencePaneID);
         this.preferencePaneID = null;
@@ -72,6 +84,8 @@ class TranslatorPlugin {
     this.view = null;
     this.state.close();
     this.triggeredSelectionSnapshot = null;
+    this.releaseLifecycle?.();
+    this.releaseLifecycle = null;
     this.deps.readerAdapter.unregister();
     if (this.preferencePaneID) {
       this.deps.unregisterPreferences?.(this.preferencePaneID);
@@ -99,12 +113,6 @@ class TranslatorPlugin {
     Promise.resolve(this.deps.contextIndex.begin(selection)).catch((error) => {
       this.deps.logger?.error?.(error);
     });
-    if (
-      this.triggeredSelectionSnapshot &&
-      selectionIdentity(this.triggeredSelectionSnapshot) === selectionIdentity(selection)
-    ) {
-      return selection;
-    }
     const trigger = this.deps.triggerViewFactory();
     this.triggerView = trigger;
     trigger.mount({
@@ -273,15 +281,6 @@ class TranslatorPlugin {
     trigger?.destroy();
     if (this.triggerView === trigger) this.triggerView = null;
   }
-}
-
-function selectionIdentity(selection) {
-  return JSON.stringify([
-    selection.attachmentID,
-    selection.pageIndex,
-    selection.text,
-    selection.rects,
-  ]);
 }
 
 export class DocumentContextIndex {
@@ -735,8 +734,39 @@ async function createDefaultDependencies(rootURI) {
         scripts: [`${rootURI}content/preferences.js`],
       }),
     unregisterPreferences: (id) => Zotero.PreferencePanes.unregister(id),
+    attachReaderLifecycle: (ensure) => attachReaderLifecycle(ensure),
     removeAllCredentials: () => loginBackend.removeAll(),
     isUninstallReason: (reason) => reason === 6,
+  };
+}
+
+function attachReaderLifecycle(ensure) {
+  const cleanups = [];
+  try {
+    const platformWindow = Services.wm.getMostRecentWindow("navigator:browser");
+    const onFocus = () => ensure();
+    platformWindow?.addEventListener("activate", onFocus, true);
+    platformWindow?.addEventListener("focus", onFocus, true);
+    if (platformWindow) {
+      cleanups.push(() => {
+        platformWindow.removeEventListener("activate", onFocus, true);
+        platformWindow.removeEventListener("focus", onFocus, true);
+      });
+    }
+  } catch (error) {
+    Zotero.logError?.(error);
+  }
+  try {
+    const observerID = Zotero.Notifier.registerObserver(
+      { notify: () => ensure() },
+      ["tab"],
+    );
+    cleanups.push(() => Zotero.Notifier.unregisterObserver(observerID));
+  } catch (error) {
+    Zotero.logError?.(error);
+  }
+  return () => {
+    for (const cleanup of cleanups) cleanup();
   };
 }
 

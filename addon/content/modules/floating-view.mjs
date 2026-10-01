@@ -1,3 +1,5 @@
+import { attachSmoothScroll } from "./smooth-scroll.mjs";
+
 const WINDOW_WIDTH = 380;
 const WINDOW_HEIGHT = 300;
 const VIEWPORT_MARGIN = 12;
@@ -366,6 +368,7 @@ export class FloatingView {
   #detachedSizingMode = null;
   #detachedHeight = null;
   #autoFitPeakHeight = null;
+  #smoothScroll = [];
 
   mount({ doc, append, anchorRects = [], handlers = {} }) {
     return this.#mount({ doc, append, anchorRects, handlers, activeCard: false });
@@ -407,6 +410,7 @@ export class FloatingView {
     this.#nodes.actions.style.display = activeCard ? "none" : "";
     if (activeCard) this.#initializePersistentSizing();
     this.#bindEvents();
+    this.#bindSmoothScroll();
     this.#observeResize();
     this.render({ status: "ready", selection: null });
     return this.#root;
@@ -474,6 +478,7 @@ export class FloatingView {
       target.removeEventListener(type, listener);
     }
     this.#resizeObserver?.disconnect();
+    for (const release of this.#smoothScroll.splice(0)) release();
     if (this.#copyTimer !== null) clearTimeout(this.#copyTimer);
     this.#root?.remove();
     this.#overlay?.remove();
@@ -588,6 +593,14 @@ export class FloatingView {
     });
   }
 
+  #bindSmoothScroll() {
+    const view = this.#doc.defaultView;
+    this.#smoothScroll.push(
+      attachSmoothScroll(this.#nodes.contentScroll, { view }),
+      attachSmoothScroll(this.#nodes.sourcePreview, { view }),
+    );
+  }
+
   #renderSourceExpansion() {
     if (!this.#nodes) return;
     this.#nodes.sourceToggle.setAttribute(
@@ -598,6 +611,8 @@ export class FloatingView {
     this.#nodes.sourcePreview.className = this.#sourceExpanded
       ? "zct-source-preview zct-source-preview--expanded"
       : "zct-source-preview";
+    if (this.#sourceExpanded) this.#nodes.sourcePreview.setAttribute("tabindex", "0");
+    else this.#nodes.sourcePreview.removeAttribute("tabindex");
     this.#repositionAfterContentChange();
   }
 

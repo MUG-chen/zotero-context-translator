@@ -81,6 +81,22 @@ test("persistent active card starts anchored without an overlay or translate act
   assert.match(root.className, /zct-floating-window--auto-fit/);
 });
 
+test("result pane intercepts wheel when translation content overflows", () => {
+  const doc = new FakeDocument();
+  const view = new FloatingView();
+  const root = view.mountActive({
+    doc,
+    anchorRect: { left: 100, top: 120, right: 180, bottom: 140 },
+    handlers: {},
+  });
+  const pane = root.querySelector(".zct-result-scroll");
+  pane.clientHeight = 80;
+  pane.scrollHeight = 400;
+  const wheel = event("wheel", { deltaY: 50, deltaMode: 0 });
+  pane.dispatchEvent(wheel);
+  assert.equal(wheel.defaultPrevented, true);
+});
+
 test("new translation resets auto-fit height but preserves a user-set height", () => {
   const doc = new FakeDocument();
   const view = new FloatingView();

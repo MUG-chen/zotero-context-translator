@@ -8,6 +8,9 @@ export class PdfTextAccessUnavailable extends Error {
 }
 
 export class ReaderAdapter {
+  #originalUnregister = null;
+  #listenerAttached = false;
+
   constructor({
     readerAPI,
     pluginID,
@@ -23,36 +26,87 @@ export class ReaderAdapter {
     this.waiveXrays = waiveXrays ?? ((value) => globalThis.Cu?.waiveXrays?.(value) ?? value);
     this.cloneInto = cloneInto ?? ((value, target) => globalThis.Cu?.cloneInto?.(value, target) ?? value);
     this.handler = null;
+    this.#originalUnregister = null;
+    this.#listenerAttached = false;
   }
 
   register(handler) {
-    if (this.handler) return;
     if (typeof this.readerAPI?.registerEventListener !== "function") {
       throw new Error("Zotero Reader event API is unavailable");
     }
     this.handler = handler;
-    this.readerAPI.registerEventListener(EVENT_TYPE, handler, this.pluginID);
+    this.#patchBuggyUnregister();
+    this.ensureRegistered();
+  }
+
+  ensureRegistered() {
+    if (!this.handler) return;
+    if (this.isListening()) return;
+    this.readerAPI.registerEventListener(EVENT_TYPE, this.handler, this.pluginID);
+    this.#listenerAttached = true;
+  }
+
+  isListening() {
+    const list = this.readerAPI?._registeredListeners;
+    if (Array.isArray(list)) {
+      return list.some(
+        (entry) => entry?.type === EVENT_TYPE && entry?.handler === this.handler,
+      );
+    }
+    return Boolean(this.handler && this.#listenerAttached);
   }
 
   unregister() {
-    if (!this.handler) return;
-    const unregister = this.readerAPI?.unregisterEventListener;
-    const hasZotero906FilterBug =
-      typeof unregister === "function" &&
-      /x\.type\s*===\s*type\s*&&\s*x\.handler\s*===\s*handler/.test(
-        Function.prototype.toString.call(unregister),
-      );
+    const handler = this.handler;
     if (
-      hasZotero906FilterBug &&
+      handler &&
       typeof this.readerAPI?._unregisterEventListenerByPluginID === "function"
     ) {
-      // Zotero 9.0.6's public method keeps the matching listener and removes
-      // unrelated listeners. Its plugin-scoped lifecycle helper is safe here.
       this.readerAPI._unregisterEventListenerByPluginID(this.pluginID);
-    } else {
-      unregister?.call(this.readerAPI, EVENT_TYPE, this.handler);
+    } else if (handler) {
+      this.readerAPI?.unregisterEventListener?.call(
+        this.readerAPI,
+        EVENT_TYPE,
+        handler,
+      );
     }
     this.handler = null;
+    this.#listenerAttached = false;
+    this.#unpatchBuggyUnregister();
+  }
+
+  #patchBuggyUnregister() {
+    const api = this.readerAPI;
+    const unregister = api?.unregisterEventListener;
+    if (typeof unregister !== "function" || unregister.__zctPatched) return;
+    if (!isZotero906UnregisterBug(unregister)) return;
+    const adapter = this;
+    const original = unregister;
+    const patched = function unregisterEventListener(type, handler) {
+      const list = api._registeredListeners;
+      if (Array.isArray(list)) {
+        api._registeredListeners = list.filter(
+          (entry) => !(entry.type === type && entry.handler === handler),
+        );
+      } else {
+        original.call(api, type, handler);
+      }
+      adapter.ensureRegistered();
+    };
+    patched.__zctPatched = true;
+    this.#originalUnregister = original;
+    api.unregisterEventListener = patched;
+  }
+
+  #unpatchBuggyUnregister() {
+    const api = this.readerAPI;
+    if (
+      this.#originalUnregister &&
+      api?.unregisterEventListener?.__zctPatched
+    ) {
+      api.unregisterEventListener = this.#originalUnregister;
+    }
+    this.#originalUnregister = null;
   }
 
   extractSelection(event) {
@@ -204,6 +258,12 @@ function normalizeRect(rect) {
     values.push(value);
   }
   return values;
+}
+
+function isZotero906UnregisterBug(unregister) {
+  return /x\.type\s*===\s*type\s*&&\s*x\.handler\s*===\s*handler/.test(
+    Function.prototype.toString.call(unregister),
+  );
 }
 
 function invalid(reason) {
