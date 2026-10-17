@@ -16,7 +16,7 @@ npm run build
 必须满足：
 
 - 所有 Node 测试通过。
-- `outputs/zotero-context-translator-0.2.6.xpi` 的根目录包含 `manifest.json`、`bootstrap.js` 和 `prefs.js`。
+- `outputs/zotero-context-translator-0.2.7.xpi` 的根目录包含 `manifest.json`、`bootstrap.js` 和 `prefs.js`。
 - XPI 不包含 API Key、缓存、日志、测试、`work/` 或用户论文。
 - 401/403、用户取消和首个模型事件后的流中断不重试；尚未收到模型事件时，502/503/504 或临时连接错误最多重试两次；短暂 429 遵守不超过 15 秒的 `Retry-After`。
 - 在 429 或临时 5xx 的退避等待中取消，应在 1 秒内结束，且不得再发出下一次请求。
@@ -62,9 +62,9 @@ npm run build
 | 关闭后残留新增内存 | ≤ 30 MB |
 | 取消到停止回调 | ≤ 1 s |
 
-Node 合成基准用于验证算法回归；PDF.js 提取时间、主线程长任务和内存必须在 Zotero 9.0.6 实机测量。
+Node 合成基准用于验证算法回归；PDF.js 提取时间、主线程长任务和内存必须在 Zotero 10 实机测量。
 
-## Zotero 9.0.6 实机门禁
+## Zotero 10 实机门禁
 
 使用独立 profile 和独立空数据目录：
 

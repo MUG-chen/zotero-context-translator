@@ -666,7 +666,7 @@ async function createDefaultDependencies(rootURI) {
   const IO = globalThis.IOUtils;
   const Paths = globalThis.PathUtils;
   if (!IO || !Paths) {
-    throw new Error("Zotero 9 IOUtils/PathUtils globals are unavailable");
+    throw new Error("Zotero IOUtils/PathUtils globals are unavailable");
   }
   const loginManager = Cc["@mozilla.org/login-manager;1"].getService(
     Ci.nsILoginManager,

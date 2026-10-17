@@ -239,6 +239,40 @@ test("does not mistake ordinary narrow word gaps for page gutters", async () => 
   assert.ok(blocks.every((block) => block.layoutColumn === null));
 });
 
+test("reads the Zotero 10 primary PDF view after it finishes loading", async () => {
+  let resolveReady;
+  const ready = new Promise((resolve) => {
+    resolveReady = resolve;
+  });
+  const pdfDocument = {
+    numPages: 1,
+    async getPage() {
+      return {
+        getViewport: () => null,
+        getTextContent: async () => ({
+          items: [{ str: "Loaded later", transform: [1, 0, 0, 10, 20, 700], width: 70, height: 10 }],
+        }),
+      };
+    },
+  };
+  const application = {};
+  const reader = {
+    _internalReader: {
+      _primaryView: {
+        initializedPromise: ready,
+        _iframeWindow: { PDFViewerApplication: application },
+      },
+    },
+  };
+  const adapter = new ReaderAdapter({ readerAPI: {}, pluginID: "plugin@test" });
+  const pending = adapter.extractDocumentBlocks(reader);
+  application.pdfDocument = pdfDocument;
+  resolveReady();
+
+  const blocks = await pending;
+  assert.equal(blocks[0].text, "Loaded later");
+});
+
 test("stops with a typed result when PDF.js text access is unavailable", async () => {
   const adapter = new ReaderAdapter({ readerAPI: {}, pluginID: "plugin@test" });
   await assert.rejects(

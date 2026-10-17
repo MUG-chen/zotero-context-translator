@@ -1,7 +1,7 @@
 const EVENT_TYPE = "renderTextSelectionPopup";
 
 export class PdfTextAccessUnavailable extends Error {
-  constructor(message = "无法访问 PDF 文本层；扫描版 PDF 暂不受支持") {
+  constructor(message = "无法访问 PDF 文本层；扫描版 PDF 或阅读模式暂不受支持") {
     super(message);
     this.name = "PdfTextAccessUnavailable";
   }
@@ -202,12 +202,17 @@ export class ReaderAdapter {
     if (this.resolvePdfDocument) {
       return this.waiveXrays(await this.resolvePdfDocument(reader));
     }
-    // This is the single Zotero 9.0.6 path verified against the installed
-    // application source. If it changes, fail explicitly instead of probing.
-    return this.waiveXrays(
-      reader?._internalReader?._primaryView?._iframeWindow
-        ?.PDFViewerApplication?.pdfDocument,
-    );
+    // Zotero 10 reader PDFView. Reading Mode overlays reflowed HTML and keeps
+    // the PDF view at _primaryView. Hidden tabs can suspend that view and drop
+    // pdfDocument until initializedPromise settles, so wait once before failing.
+    const view = reader?._internalReader?._primaryView;
+    const pdfWindow = view?._iframeWindow;
+    const application = pdfWindow?.PDFViewerApplication;
+    const ready = view?.initializedPromise;
+    if (ready && typeof ready.then === "function" && !application?.pdfDocument) {
+      await ready;
+    }
+    return this.waiveXrays(application?.pdfDocument ?? null);
   }
 }
 

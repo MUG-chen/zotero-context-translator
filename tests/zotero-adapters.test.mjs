@@ -136,7 +136,7 @@ test("preference fragment exposes only explicit connection-test actions", async 
   assert.doesNotMatch(xhtml, /sidebar/i);
 });
 
-test("composition root uses Zotero 9 global IOUtils and PathUtils", async () => {
+test("composition root uses Zotero global IOUtils and PathUtils", async () => {
   const { readFile } = await import("node:fs/promises");
   const source = await readFile(
     new URL("../addon/content/modules/plugin.mjs", import.meta.url),

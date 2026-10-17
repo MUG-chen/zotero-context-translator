@@ -1,6 +1,6 @@
 # Zotero Context Translator
 
-面向 Zotero 9 PDF Reader 的上下文感知学术翻译插件。当前版本：`0.2.6`，支持 Zotero `9.0.*`。
+面向 Zotero PDF Reader 的上下文感知学术翻译插件。当前版本：`0.2.7`，支持 Zotero `9.0.*` 与 `10.0.*`。
 
 ## 功能特点
 
@@ -11,14 +11,14 @@
 
 ## 系统要求
 
-- Windows 64 位与 Zotero `9.0.*`。
+- Windows 64 位与 Zotero `9.0.*` 或 `10.0.*`。
 - 可选中文本层的 PDF；插件不包含 OCR，不支持扫描版 PDF。
 - 一个 OpenAI Chat Completions 兼容接口。
 
 ## 安装
 
 1. 克隆源代码并安装项目依赖。
-2. 在仓库根目录运行 `pnpm run build`，生成 `outputs/zotero-context-translator-0.2.6.xpi`。
+2. 在仓库根目录运行 `pnpm run build`，生成 `outputs/zotero-context-translator-0.2.7.xpi`。
 3. 在 Zotero 中打开“工具 → 插件”，点击齿轮并选择“Install Add-on From File…”，再选择生成的 XPI 文件。
 4. 安装后打开“编辑 → 设置 → 上下文翻译”，完成 API 配置。
 
@@ -60,7 +60,7 @@ Model Name: model-name
 pnpm run build
 ```
 
-构建产物为 `outputs/zotero-context-translator-0.2.6.xpi`。
+构建产物为 `outputs/zotero-context-translator-0.2.7.xpi`。
 
 ## 测试与验收
 
@@ -70,7 +70,7 @@ pnpm run build
 pnpm test
 ```
 
-发布前还需按照 [验收规范](docs/ACCEPTANCE.md) 在 Zotero 9.0.6 中完成 Reader 实机验证；自动化测试不能替代该步骤。
+发布前还需按照 [验收规范](docs/ACCEPTANCE.md) 在 Zotero 10 中完成 Reader 实机验证；自动化测试不能替代该步骤。经典 PDF 视图与阅读模式都要覆盖。
 
 ## 已知限制
 

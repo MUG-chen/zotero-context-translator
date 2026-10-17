@@ -1,13 +1,21 @@
-# Zotero Context Translator 0.2.6 安装与使用
+# Zotero Context Translator 0.2.7 安装与使用
 
 ## 系统要求
 
 - Windows 64 位
-- Zotero 9.0.x（验收基线：9.0.6）
+- Zotero 9.0.x 或 10.0.x（验收基线：Zotero 10）
 - 带有可选中文本层的 PDF
 - 一个 OpenAI Chat Completions 兼容接口
 
 插件不包含 OCR。扫描版 PDF 会显示“无法访问 PDF 文本层”，不会静默上传整篇论文或调用其他 OCR 服务。
+
+## 0.2.7 适配 Zotero 10
+
+Zotero 10 与 Zotero 9 使用同一套 Firefox 140 ESR 平台和 bootstrap 插件接口。0.2.7 把兼容上限从 `9.0.*` 放到 `10.0.*`，因此 Zotero 10 正式版可以安装。选区触发器仍挂在 `renderTextSelectionPopup` 上，PDF 文本层仍从主视图的 `PDFViewerApplication.pdfDocument` 读取。
+
+Zotero 10 的阅读模式会用重排 HTML 盖住经典 PDF 视图。选区按钮仍会出现。本地结构索引继续读取主视图里的 PDF 文本层，并会等到该视图加载完成。阅读模式或扫描版拿不到文本层时，插件会明确提示，不会静默上传整篇论文。
+
+## 0.2.6 滚轮当即滚动
 
 ## 0.2.6 滚轮当即滚动
 
@@ -81,15 +89,15 @@ Windows 鼠标滚轮一格默认是 3 行。0.2.4 把结果区和展开原文的
 
 ## 安装
 
-1. 下载 `zotero-context-translator-0.2.6.xpi`。
+1. 下载 `zotero-context-translator-0.2.7.xpi`。
 2. 在 Zotero 中打开“工具 → 插件”。
 3. 点击右上角齿轮，选择“Install Add-on From File…”（从文件安装插件）。
 4. 选择 XPI 文件并确认安装。
 5. 打开“编辑 → 设置 → 上下文翻译”。
 
-从 0.1.x 或 0.2.x 升级时直接选择 0.2.6 XPI 即可；插件 ID 不变，因此已有 Base URL、Model Name、目标语言、缓存和 Login Manager 中的 API Key 会保留。
+从 0.1.x 或 0.2.x 升级时直接选择 0.2.7 XPI 即可；插件 ID 不变，因此已有 Base URL、Model Name、目标语言、缓存和 Login Manager 中的 API Key 会保留。
 
-插件只声明支持 Zotero 9.0.*。如果 Zotero 拒绝安装，请先确认版本是 9.0.x，而不是旧版或尚未验收的新主版本。插件通过 GitHub Release 更新清单检查新版本，也可直接选择新版 XPI 覆盖安装。
+插件声明支持 Zotero 9.0.* 与 10.0.*。如果 Zotero 拒绝安装，请先确认版本在这个范围内。插件通过 GitHub Release 更新清单检查新版本，也可直接选择新版 XPI 覆盖安装。
 
 ## API 设置
 

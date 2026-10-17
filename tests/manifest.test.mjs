@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("manifest targets Zotero 9.0.*", async () => {
+test("manifest targets Zotero 9 and 10", async () => {
   const manifest = JSON.parse(
     await readFile(new URL("../addon/manifest.json", import.meta.url)),
   );
@@ -13,11 +13,11 @@ test("manifest targets Zotero 9.0.*", async () => {
 
   assert.equal(app.id, "zotero-context-translator@local");
   assert.equal(app.strict_min_version, "9.0");
-  assert.equal(app.strict_max_version, "9.0.*");
+  assert.equal(app.strict_max_version, "10.0.*");
   assert.equal(
     app.update_url,
     "https://github.com/MUG-chen/zotero-context-translator/releases/latest/download/updates.json",
   );
-  assert.equal(manifest.version, "0.2.6");
-  assert.equal(packageMetadata.version, "0.2.6");
+  assert.equal(manifest.version, "0.2.7");
+  assert.equal(packageMetadata.version, "0.2.7");
 });

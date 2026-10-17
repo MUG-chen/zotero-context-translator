@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Zotero Context Translator",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Context-aware academic translation inside the Zotero PDF reader.",
   "author": "Codex",
   "applications": {
@@ -9,7 +9,7 @@
       "id": "zotero-context-translator@local",
       "update_url": "https://github.com/MUG-chen/zotero-context-translator/releases/latest/download/updates.json",
       "strict_min_version": "9.0",
-      "strict_max_version": "9.0.*"
+      "strict_max_version": "10.0.*"
     }
   }
 }
